@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0" />
+<title>MSPHP Field Data Entry</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%2308447a'/%3E%3Cellipse cx='42' cy='50' rx='28' ry='18' fill='white'/%3E%3Cpolygon points='68,50 92,32 92,68' fill='white'/%3E%3Ccircle cx='28' cy='46' r='4' fill='%2308447a'/%3E%3C/svg%3E" />
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header id="appHeader">
+  <div class="headerRow">
+    <button id="btnHome" class="navBtn">&#8962; Collections</button>
+    <button id="btnStatus" class="navBtn">&#10003; Station Status</button>
+    <button id="btnSettings" class="navBtn">&#9881; Table Data</button>
+    <div id="headerTitle">MSPHP Field Data Entry</div>
+    <div id="onlineBadge" class="badge badgeOffline">OFFLINE-READY (LOCAL DATA)</div>
+  </div>
+</header>
+
+<main id="app">
+
+  <!-- ===================== COLLECTIONS LIST VIEW ===================== -->
+  <section id="viewList" class="view">
+    <div class="toolbar">
+      <button id="btnNewCollection" class="bigBtn primary">+ New Collection</button>
+      <button id="btnExportAccess" class="bigBtn">Export CSVs for Access</button>
+      <button id="btnBackup" class="bigBtn">Backup (JSON)</button>
+      <button id="btnRestore" class="bigBtn">Restore Backup&hellip;</button>
+      <input type="file" id="fileRestore" accept="application/json" hidden />
+    </div>
+    <div id="backupBanner" class="backupBanner"></div>
+    <div id="listSummary" class="listSummary"></div>
+    <table id="collectionsTable" class="dataTable">
+      <thead>
+        <tr>
+          <th>Collection #</th><th>Date</th><th>Activity</th><th>Station</th>
+          <th>System</th><th>Hydro</th><th>Measured</th><th>Sacrificed</th><th>Tagged</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="collectionsTbody"></tbody>
+    </table>
+  </section>
+
+  <!-- ===================== COLLECTION ENTRY VIEW ===================== -->
+  <section id="viewEntry" class="view" hidden>
+
+    <nav id="tabStrip">
+      <button class="tabBtn active" data-tab="collection">Collection</button>
+      <button class="tabBtn deleteTab" id="btnDeleteCollection">Delete Collection</button>
+    </nav>
+
+    <!-- ---- TAB: Collection info ---- -->
+    <div class="tabPanel" id="panelCollection">
+
+      <h3 class="sectionHeading sectionHeadingFirst">Collection Info</h3>
+      <div id="cnMismatchBanner" class="gateBanner" hidden></div>
+      <div class="fieldGrid">
+        <div class="field">
+          <label>Activity</label>
+          <select id="f_ActivityCode"></select>
+        </div>
+        <div class="field">
+          <label>Date</label>
+          <input id="f_Date" type="date" />
+        </div>
+        <div class="field">
+          <label>Collection #</label>
+          <input id="f_CollectionNumber" type="text" readonly class="mono bold" />
+        </div>
+        <div class="field">
+          <label>Gear</label>
+          <select id="f_GearCode"></select>
+        </div>
+        <div class="field timeField">
+          <label>Set Time</label>
+          <div class="inlineBtnField">
+            <button class="nowBtn" data-target="f_Time">Now</button>
+            <input id="f_Time" type="time" step="1" />
+          </div>
+        </div>
+        <div class="field timeField">
+          <label>Haul Time</label>
+          <div class="inlineBtnField">
+            <button class="nowBtn" data-target="f_Time2">Now</button>
+            <input id="f_Time2" type="time" step="1" />
+          </div>
+        </div>
+        <div class="field wide">
+          <label>Station System</label>
+          <div id="systemToggle" class="toggleGroup">
+            <button class="toggleBtn" data-system="WAS">WAS</button>
+            <button class="toggleBtn" data-system="ALT">ALT</button>
+            <button class="toggleBtn" data-system="HAM">HAM</button>
+            <button class="toggleBtn" data-system="CMB">CMB</button>
+          </div>
+        </div>
+        <div class="field wide">
+          <label>Location</label>
+          <input id="f_Location" type="text" />
+        </div>
+      </div>
+
+      <h3 class="sectionHeading">Station (auto-filled — check it landed right)</h3>
+      <div class="fieldGrid fieldGridCompact">
+        <div class="field small stationField">
+          <label>Station</label>
+          <select id="f_Station"></select>
+        </div>
+        <div class="field small">
+          <label>Sound System</label>
+          <select id="f_SoundSystem"></select>
+        </div>
+        <div class="field small">
+          <label>Latitude</label>
+          <input id="f_Latitude" type="number" step="0.00001" />
+        </div>
+        <div class="field small">
+          <label>Longitude</label>
+          <input id="f_Longitude" type="number" step="0.00001" />
+        </div>
+      </div>
+
+      <h3 class="sectionHeading">Crew</h3>
+      <div class="fieldGrid">
+        <div class="field">
+          <label>Dir. of Tide</label>
+          <select id="f_DirTide"></select>
+        </div>
+        <div class="field">
+          <label>Vessel Op.</label>
+          <select id="f_VesselOp"></select>
+        </div>
+        <div class="field">
+          <label>Data Rec.</label>
+          <select id="f_DataRec"></select>
+        </div>
+        <div class="field">
+          <label>Fish Meas.</label>
+          <select id="f_FishMeas"></select>
+        </div>
+        <div class="field statusField">
+          <label>Location / Gear</label>
+          <span id="statusLGC" class="statusPill">MISSING</span>
+        </div>
+        <div class="field wide">
+          <label>Comments</label>
+          <textarea id="f_Comments" rows="2"></textarea>
+        </div>
+      </div>
+
+      <h3 class="sectionHeading">Hydrographic / Weather</h3>
+      <div class="fieldGrid">
+        <div class="field"><label>Weather</label><select id="f_WeatherConditions"></select></div>
+        <div class="field"><label>Wind Direction</label><select id="f_WindDirection"></select></div>
+        <div class="field"><label>Wind Velocity</label><select id="f_WindVelocity"></select></div>
+        <div class="field"><label>Tide Stage</label><select id="f_TideStage"></select></div>
+        <div class="field"><label>Moon Phase</label><select id="f_MoonPhaseCode"></select></div>
+        <div class="field"><label>Depth (ft)</label><input id="f_Depth" type="number" step="0.1" /></div>
+        <div class="field"><label>Salinity (ppt)</label><input id="f_Salinity" type="number" step="0.1" /></div>
+        <div class="field"><label>Water Temp (&deg;C)</label><input id="f_WaterTemp" type="number" step="0.1" /></div>
+        <div class="field"><label>D.O. (mg/L)</label><input id="f_DO" type="number" step="0.1" /></div>
+        <div class="field statusField">
+          <label>Hydro</label>
+          <span id="statusHydro" class="statusPill">MISSING</span>
+        </div>
+      </div>
+
+      <div class="tabJumpDivider"></div>
+      <div class="tabJumpRow">
+        <button class="tabJumpBox" data-tab="measured">Measured Fish <span id="tabCountMeasured" class="tabCount"></span></button>
+        <button class="tabJumpBox" data-tab="sacrificed">Sacrificed Fish <span id="tabCountSacrificed" class="tabCount"></span></button>
+        <button class="tabJumpBox" data-tab="tagged">Tagged Fish <span id="tabCountTagged" class="tabCount"></span></button>
+      </div>
+    </div>
+
+    <!-- ---- TAB: Measured Fish ---- -->
+    <div class="tabPanel" id="panelMeasured" hidden>
+      <div class="toolbar">
+        <label class="checkField">
+          <input type="checkbox" id="f_SubSampleTool" />
+          Subsample tool ON (flags "TAKE THIS FISH" for under-sampled size bins)
+        </label>
+      </div>
+      <div id="measuredGateBanner" class="gateBanner" hidden></div>
+      <div class="entryRow" id="measuredEntryRow">
+        <div class="field" id="mf_Species_field"><label>Species</label>
+          <select id="mf_SpeciesCode"></select>
+          <span id="mfCurrentTotal" class="currentTotalHint"></span>
+        </div>
+        <div class="field small"><label>FL</label><input id="mf_FL" type="number" /></div>
+        <div class="field small" id="mf_TL_field"><label>TL</label><input id="mf_TL" type="number" /></div>
+        <div class="field small" id="mf_SL_field" hidden><label>SL</label><input id="mf_SL" type="number" /></div>
+        <div class="field small" id="mf_Sex_field"><label>Sex</label><select id="mf_SexCode"></select></div>
+        <div class="field small" id="mf_TotalWeight_field" hidden><label>Wt (g)</label><input id="mf_TotalWeight" type="number" step="0.1" /></div>
+        <button type="button" id="btnToggleRareFields" class="smallBtn">+ SL / Wt</button>
+        <div class="field checkFieldInline"><label><input type="checkbox" id="mf_FishTaken" /> Taken</label></div>
+        <button id="btnAddMeasured" class="bigBtn primary">Add Fish</button>
+        <div class="field wide"><label>Comments</label><input id="mf_Comments" type="text" /></div>
+      </div>
+      <div id="measuredWarnings" class="warningBox" hidden></div>
+      <div id="measuredGroups"></div>
+    </div>
+
+    <!-- ---- TAB: Sacrificed Fish ---- -->
+    <div class="tabPanel" id="panelSacrificed" hidden>
+      <div id="sacrificedGateBanner" class="gateBanner" hidden></div>
+      <div class="entryRow" id="sacrificedEntryRow">
+        <div class="field small"><label>Sample #</label><input id="sf_SampleNumber" type="number" /></div>
+        <div class="field"><label>Species</label>
+          <select id="sf_SpeciesCode"></select>
+        </div>
+        <div class="field small"><label>TL</label><input id="sf_TL" type="number" /></div>
+        <div class="field small"><label>FL</label><input id="sf_FL" type="number" /></div>
+        <div class="field small"><label>SL</label><input id="sf_SL" type="number" /></div>
+        <div class="field small"><label>Wt (g)</label><input id="sf_TotalWeight" type="number" step="0.1" /></div>
+        <div class="field small"><label>Sex</label><select id="sf_SexCode"></select></div>
+        <div class="field small"><label>Gonad Stage</label><select id="sf_GonadStage"></select></div>
+        <div class="field small"><label>Gonad Wt (g)</label><input id="sf_GonadWeight" type="number" step="0.01" /></div>
+        <div class="field checkFieldInline"><label><input type="checkbox" id="sf_GonadsTaken" /> Gonads Taken</label></div>
+        <div class="field checkFieldInline"><label><input type="checkbox" id="sf_OtolithTaken" /> Otoliths Taken</label></div>
+        <div class="field wide"><label>Comments</label><input id="sf_Comments" type="text" /></div>
+        <button id="btnAddSacrificed" class="bigBtn primary">Add Sample</button>
+      </div>
+      <div id="sacrificedWarnings" class="warningBox" hidden></div>
+      <table class="dataTable">
+        <thead><tr>
+          <th>ID</th><th>Species</th><th>TL</th><th>FL</th><th>SL</th><th>Wt</th><th>Sex</th>
+          <th>Gonad</th><th>Otolith</th><th>Comments</th><th></th>
+        </tr></thead>
+        <tbody id="sacrificedTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- TAB: Tagged Fish ---- -->
+    <div class="tabPanel" id="panelTagged" hidden>
+      <div id="taggedGateBanner" class="gateBanner" hidden></div>
+      <div class="entryRow" id="taggedEntryRow">
+        <div class="field"><label>Tag #</label><input id="tf_TagNumber" type="text" /></div>
+        <div class="field"><label>Tag # 2</label><input id="tf_TagNumber2" type="text" /></div>
+        <div class="field"><label>Primary ID</label><input id="tf_PrimaryID" type="text" /></div>
+        <div class="field"><label>Species</label>
+          <select id="tf_SpeciesCode"></select>
+        </div>
+        <div class="field small"><label>Tag Type</label><select id="tf_TagType"></select></div>
+        <div class="field small"><label>Disposition</label><select id="tf_DispositionCode"></select></div>
+        <div class="field small"><label>TL</label><input id="tf_TL" type="number" /></div>
+        <div class="field small"><label>FL</label><input id="tf_FL" type="number" /></div>
+        <div class="field small"><label>SL</label><input id="tf_SL" type="number" /></div>
+        <div class="field wide"><label>Comments</label><input id="tf_Comments" type="text" /></div>
+        <button id="btnAddTagged" class="bigBtn primary">Add Tag</button>
+      </div>
+      <div id="taggedWarning" class="warningBox" hidden></div>
+      <table class="dataTable">
+        <thead><tr>
+          <th>Primary ID</th><th>Tag #</th><th>Tag #2</th><th>Species</th><th>Type</th>
+          <th>Disp.</th><th>TL</th><th>FL</th><th>SL</th><th>Comments</th><th></th>
+        </tr></thead>
+        <tbody id="taggedTbody"></tbody>
+      </table>
+    </div>
+
+  </section>
+
+  <!-- ===================== MONTHLY STATION STATUS VIEW ===================== -->
+  <section id="viewStatus" class="view" hidden>
+    <p class="settingsNote">Check/balance: every assigned station for the chosen month, system, and gear, and
+      whether a fully-complete collection has been entered for it yet. This only reflects the data on this
+      device — if the crew works from separate laptops, merge everyone's Backup (JSON) files onto one device
+      first for an accurate combined view.</p>
+    <div class="entryRow">
+      <div class="field small"><label>Month</label><input id="statusMonth" type="month" /></div>
+      <div class="field"><label>Gear</label><select id="statusGear"></select></div>
+    </div>
+    <div class="toggleGroup" id="statusSystemToggle">
+      <button class="toggleBtn" data-system="WAS">WAS</button>
+      <button class="toggleBtn" data-system="ALT">ALT</button>
+      <button class="toggleBtn" data-system="HAM">HAM</button>
+      <button class="toggleBtn" data-system="CMB">CMB</button>
+    </div>
+    <div id="statusSummary" class="listSummary"></div>
+    <table id="statusTable" class="dataTable">
+      <thead><tr><th>Station</th><th>Status</th><th>Date Done</th><th>Collection #</th></tr></thead>
+      <tbody id="statusTbody"></tbody>
+    </table>
+  </section>
+
+  <!-- ===================== SETTINGS VIEW (Crew / Stations / Monthly Assignments) ===================== -->
+  <section id="viewSettings" class="view" hidden>
+
+    <div class="deviceTierBar">
+      <span class="deviceTierLabel">Screen size</span>
+      <div class="toggleGroup" id="deviceTierToggle">
+        <button class="toggleBtn" data-tier="auto">Auto</button>
+        <button class="toggleBtn" data-tier="phone">Phone</button>
+        <button class="toggleBtn" data-tier="tablet">Tablet</button>
+        <button class="toggleBtn" data-tier="laptop">Laptop</button>
+      </div>
+      <span class="deviceTierNote">Auto picks a layout from the window size and updates live. Pick one to lock it in on this device instead — useful if Auto ever guesses wrong.</span>
+    </div>
+
+    <nav id="settingsTabStrip">
+      <button class="tabBtn active" data-settings-tab="crew">Crew</button>
+      <button class="tabBtn" data-settings-tab="gear">Gear</button>
+      <button class="tabBtn" data-settings-tab="activity">Activity</button>
+      <button class="tabBtn" data-settings-tab="stations">Stations</button>
+      <button class="tabBtn" data-settings-tab="assignments">Monthly Station Assignments</button>
+    </nav>
+
+    <!-- ---- Crew ---- -->
+    <div class="tabPanel" id="settingsPanelCrew">
+      <p class="settingsNote">Anyone in this list is selectable for Vessel Op., Data Rec., and Fish Meas. on the
+        Collection tab. Edits here take effect immediately on this device, and travel to other devices via
+        Backup (JSON) / Restore Backup on the Collections screen.</p>
+      <div class="entryRow">
+        <div class="field small"><label>Code</label><input id="crewCode" type="text" maxlength="10" /></div>
+        <div class="field wide"><label>Name</label><input id="crewName" type="text" /></div>
+        <button id="btnAddCrew" class="bigBtn primary">Add Crew Member</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr><th>Code</th><th>Name</th><th></th></tr></thead>
+        <tbody id="crewTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- Gear ---- -->
+    <div class="tabPanel" id="settingsPanelGear" hidden>
+      <p class="settingsNote">The Gear dropdown on the Collection tab. Note: Gear also auto-fills from the
+        collection's month (Gill net for Jun/Jul/Aug, Trammel net for Sep/Oct/Nov) whenever it's still blank —
+        editing this list doesn't change that rule, just what's available to pick.</p>
+      <div class="entryRow">
+        <div class="field small"><label>Code</label><input id="gearCode" type="number" /></div>
+        <div class="field wide"><label>Name</label><input id="gearName" type="text" /></div>
+        <button id="btnAddGear" class="bigBtn primary">Add Gear Type</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr><th>Code</th><th>Name</th><th></th></tr></thead>
+        <tbody id="gearTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- Activity ---- -->
+    <div class="tabPanel" id="settingsPanelActivity" hidden>
+      <p class="settingsNote">The Activity dropdown on the Collection tab — also the first digit(s) of every
+        Collection Number generated from it.</p>
+      <div class="entryRow">
+        <div class="field small"><label>Code</label><input id="activityCode" type="number" /></div>
+        <div class="field wide"><label>Name</label><input id="activityName" type="text" /></div>
+        <button id="btnAddActivity" class="bigBtn primary">Add Activity</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr><th>Code</th><th>Name</th><th></th></tr></thead>
+        <tbody id="activityTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- Stations ---- -->
+    <div class="tabPanel" id="settingsPanelStations" hidden>
+      <p class="settingsNote">This is the master station list used to auto-fill Latitude/Longitude and infer
+        Sound System during Collection entry. It's separate from the monthly assignment list (next tab).</p>
+      <div class="toggleGroup" id="settingsStationSystemToggle">
+        <button class="toggleBtn" data-system="WAS">WAS</button>
+        <button class="toggleBtn" data-system="ALT">ALT</button>
+        <button class="toggleBtn" data-system="HAM">HAM</button>
+        <button class="toggleBtn" data-system="CMB">CMB</button>
+      </div>
+      <div class="entryRow">
+        <div class="field"><label>Station</label><input id="stationName" type="text" /></div>
+        <div class="field small"><label>Latitude</label><input id="stationLat" type="number" step="0.00001" /></div>
+        <div class="field small"><label>Longitude</label><input id="stationLon" type="number" step="0.00001" /></div>
+        <div class="field small"><label>Habitat</label><input id="stationHabitat" type="text" /></div>
+        <div class="field small"><label>Depth</label><input id="stationDepth" type="text" /></div>
+        <div class="field small"><label>Gear</label><input id="stationGear" type="text" /></div>
+        <button id="btnAddStation" class="bigBtn primary">Add Station</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr><th>Station</th><th>Lat</th><th>Lon</th><th>Habitat</th><th>Depth</th><th>Gear</th><th></th></tr></thead>
+        <tbody id="stationsTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- Monthly Station Assignments ---- -->
+    <div class="tabPanel" id="settingsPanelAssignments" hidden>
+      <p class="settingsNote">Import the month's randomly-generated station assignment list here — a CSV or a
+        real Excel (.xlsx/.xls) file both work directly, no need to convert to CSV first. While an assignment
+        list exists for a collection's month, the
+        Station field during entry is restricted to that month's assigned stations only. If no list has been
+        imported yet for a given month, entry falls back to the full master station list so nobody gets locked
+        out — import the list as soon as it's available to narrow it down.</p>
+      <div class="entryRow">
+        <div class="field small"><label>Applies to month</label><input id="assignMonth" type="month" /></div>
+        <div class="field wide"><label>CSV or Excel file</label><input id="assignFile" type="file" accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" /></div>
+        <button id="btnImportAssignments" class="bigBtn primary">Import / Replace This Month's List</button>
+      </div>
+      <div id="assignImportSummary" class="warningBox" hidden></div>
+      <div id="assignmentsList"></div>
+    </div>
+
+  </section>
+
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<div id="labelPrintArea" class="labelPrintArea" hidden></div>
+
+<script src="js/vendor/xlsx.core.min.js"></script>
+<script src="js/lookups.js"></script>
+<script src="js/speciesFields.js"></script>
+<script src="js/db.js"></script>
+<script src="js/validation.js"></script>
+<script src="js/subsample.js"></script>
+<script src="js/fieldlogic.js"></script>
+<script src="js/export.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/stationStatus.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

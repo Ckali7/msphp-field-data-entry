@@ -1,0 +1,7 @@
+# Local desktop shortcut -- points at an absolute path on this machine
+# (C:\Users\CKalinowsky\...), meaningless once cloned elsewhere or hosted.
+MSPHS Data Entry.lnk
+
+# OS junk
+Thumbs.db
+.DS_Store

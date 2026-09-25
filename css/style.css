@@ -1,0 +1,564 @@
+/* Field-readability first: large text, high contrast, big touch targets.
+   Mirrors the font-size choices in the original Access forms (Station was
+   22pt, most inputs 14-18pt bold) which were tuned over years for bright
+   sun + gloves on a boat deck. */
+
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --border: #333;
+  --accent: #0b5fa5;
+  --accent-dark: #08447a;
+  --ok: #1a7a1a;
+  --missing: #b30000;
+  --warn-bg: #fff3b0;
+  --warn-border: #b38600;
+  --take-bg: #ffdca8;
+  --take-border: #cc5500;
+}
+
+* { box-sizing: border-box; }
+
+/* Without this, the "hidden" attribute silently loses to any class that
+   sets its own "display" (e.g. .field's display:flex) — normal author CSS
+   beats the browser's built-in [hidden]{display:none} regardless of
+   selector specificity. Found 2026-09/10 auditing why species-conditional
+   fields (TL/SL/Sex on Measured Fish) weren't actually disappearing
+   despite the "hidden" attribute toggling correctly. Toggle visibility via
+   el.hidden everywhere in this app, never inline style.display, so this
+   one rule is the single source of truth. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 18px;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+/* Per Chris (2026-09): slightly smaller text in the boxes themselves (not
+   buttons) so populated values — especially auto-filled ones like the full
+   Lat/Long decimal, or a selected code's full label — have a better chance
+   of fitting without getting clipped. */
+input, select, textarea {
+  font-size: 0.92rem;
+}
+
+#appHeader {
+  background: var(--accent-dark);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+}
+#headerTitle {
+  font-size: 1.3rem;
+  font-weight: 700;
+  flex: 1;
+}
+.navBtn {
+  background: #fff;
+  color: var(--accent-dark);
+  border: none;
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  font-weight: 700;
+  min-height: 44px;
+}
+.badge {
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.badgeOffline { background: #2e7d32; color: #fff; }
+
+main { padding: 0.75rem 0.9rem 4rem; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.bigBtn {
+  min-height: 48px;
+  padding: 0.6rem 1.1rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: #eee;
+  color: var(--ink);
+  cursor: pointer;
+}
+.bigBtn.primary {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  color: #fff;
+}
+.bigBtn:active { transform: translateY(1px); }
+
+.smallBtn {
+  min-height: 34px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: #eee;
+  cursor: pointer;
+}
+.deleteTab { margin-left: auto; background: #ffe0e0; }
+
+/* A wrapping div would be the more textbook-correct way to scroll a wide
+   table, but display:block directly on <table> (no colspan/rowspan
+   anywhere in this app) is the well-established shortcut for exactly this,
+   and skips touching every table's HTML individually. Applies at every
+   width, not just phone, since it's a no-op unless a table genuinely
+   doesn't fit — a real risk at 360-430px with e.g. the 10-column
+   Collections list or an 11-column Sacrificed/Tagged Fish detail table. */
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1.25rem;
+  background: #fff;
+  display: block;
+  overflow-x: auto;
+}
+.dataTable th, .dataTable td {
+  border: 1px solid #999;
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  font-size: 0.95rem;
+}
+.dataTable thead th {
+  background: #ddd;
+  font-weight: 700;
+}
+.dataTable tbody tr:nth-child(even) { background: #f6f6f6; }
+.dataTable tbody tr.openRow { background: #d6e6f5; }
+
+.mono { font-family: "Consolas", monospace; }
+.bold { font-weight: 700; }
+.muted { color: #444; font-weight: 600; }
+
+.listSummary { margin: 0.4rem 0; font-weight: 600; }
+
+.backupBanner {
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.backupBanner.ok { background: #d5f2d5; border-color: var(--ok); color: var(--ok); }
+.backupBanner.due { background: var(--warn-bg); border-color: var(--warn-border); color: #6b4f00; }
+.backupBanner.never { background: #ffdada; border-color: var(--missing); color: var(--missing); }
+.backupBanner button { flex-shrink: 0; }
+
+/* ---- tabs ---- */
+#tabStrip, #settingsTabStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 3px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.tabBtn {
+  min-height: 46px;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  background: #ddd;
+  cursor: pointer;
+}
+.tabBtn.active { background: var(--accent); color: #fff; border-color: var(--accent-dark); }
+.tabCount { font-weight: 400; opacity: 0.85; }
+
+.tabPanel { padding-top: 0.25rem; }
+
+/* ---- form fields ---- */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.6rem 0.9rem;
+  align-items: end;
+}
+/* Still a tighter grid than .fieldGrid (these columns don't need to stretch
+   to fill the row), but per Chris (2026-09) it was too tight — long
+   auto-filled values (full Lat/Long decimals, etc.) were getting clipped in
+   exactly the "check it landed right" section where confirming the full
+   value actually matters. */
+.fieldGridCompact {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 210px));
+  justify-content: start;
+}
+.fieldGridCompact .field label { white-space: nowrap; }
+.field { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.field.wide { grid-column: span 2; }
+.field.small { max-width: 112px; }
+/* Station/Sound System/Lat/Long are also .field.small (for the same compact
+   look as everywhere else), so without this the generic 112px cap above
+   overrides the wider column set on .fieldGridCompact just above and this
+   section stays just as clipped as before. */
+.fieldGridCompact .field.small { max-width: 200px; }
+.field.timeField { min-width: 150px; }
+.field.stationField { min-width: 110px; }
+.field label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.field input, .field select, .field textarea {
+  min-height: 42px;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  background: #ffff8f;
+  outline: 3px solid var(--accent);
+}
+.field input.upper { text-transform: uppercase; }
+.field textarea { min-height: 3.2em; resize: vertical; }
+
+.inlineBtnField { display: flex; align-items: stretch; gap: 0.3rem; }
+.inlineBtnField input { flex: 1; min-width: 0; }
+.nowBtn {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 0 0.4rem;
+  font-size: 0.72rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: #e0e0e0;
+  font-weight: 700;
+}
+
+.checkField, .checkFieldInline {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+.checkField input, .checkFieldInline input {
+  width: 24px; height: 24px;
+}
+
+.statusField { justify-content: flex-end; }
+.statusPill {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-align: center;
+  min-height: 42px;
+  line-height: 1.9;
+  border: 2px solid var(--border);
+}
+.statusPill.ok { background: #d5f2d5; color: var(--ok); border-color: var(--ok); }
+.statusPill.missing { background: #ffdada; color: var(--missing); border-color: var(--missing); }
+
+.sectionHeading { margin: 1.1rem 0 0.4rem; border-bottom: 2px solid var(--border); padding-bottom: 0.25rem; }
+.sectionHeadingFirst { margin-top: 0; }
+
+.tabJumpDivider {
+  border-top: 3px solid var(--border);
+  margin: 1.3rem 0 0.9rem;
+}
+.tabJumpRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.tabJumpBox {
+  flex: 1 1 220px;
+  min-height: 64px;
+  padding: 0.7rem 1rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  border: 2px solid var(--accent-dark);
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.tabJumpBox .tabCount { font-weight: 600; opacity: 0.9; }
+.tabJumpBox.gated {
+  background: #eee;
+  color: #555;
+  border-color: #999;
+}
+
+.toggleGroup { display: flex; gap: 0.4rem; }
+.toggleBtn {
+  min-height: 34px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  background: #eee;
+  font-weight: 700;
+}
+.toggleBtn.active { background: var(--accent); color: #fff; border-color: var(--accent-dark); }
+
+/* ---- entry rows (measured/sacrificed/tagged add-forms) ---- */
+.entryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  background: #f0f4f8;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.6rem 1.5rem 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.entryRow .field { min-width: 90px; }
+.entryRow .field.wide { min-width: 200px; flex: 1; }
+#mf_Species_field { position: relative; }
+
+.speciesGroup {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.8rem;
+  overflow: hidden;
+}
+.speciesGroupHeader {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  background: #e7edf3;
+  padding: 0.5rem 0.7rem;
+  font-size: 1.05rem;
+}
+.speciesGroupHeader .muted { color: #444; font-weight: 600; font-size: 0.9rem; }
+.speciesGroup .dataTable { margin: 0; }
+
+.totalCountBadge {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 8px;
+  margin-left: auto;
+}
+.totalCountBadge input.totalCountInput {
+  width: 4.5em;
+  min-height: 34px;
+  font-weight: 800;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  margin-left: 0.3rem;
+}
+
+.currentTotalHint {
+  font-weight: 700;
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.2rem;
+  white-space: nowrap;
+}
+
+.settingsNote {
+  background: #eef4fa;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.95rem;
+  margin-bottom: 0.7rem;
+}
+
+/* ---- warnings / toast ---- */
+.warningBox {
+  background: var(--warn-bg);
+  border: 2px solid var(--warn-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+  font-weight: 700;
+}
+.warningBox.takeThisFish {
+  background: var(--take-bg);
+  border-color: var(--take-border);
+  color: #7a2e00;
+  font-size: 1.15rem;
+}
+
+.gateBanner {
+  background: #ffdada;
+  border: 2px solid var(--missing);
+  color: var(--missing);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.6rem;
+  font-weight: 700;
+}
+.entryRow.gated { opacity: 0.5; pointer-events: none; }
+
+.gateBanner .cnMismatchActions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.gateBanner .cnMismatchActions .smallBtn {
+  background: #fff;
+  border-color: var(--missing);
+  color: var(--missing);
+  font-weight: 800;
+}
+
+.listHydroPill {
+  min-height: 0;
+  line-height: 1.4;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.2rem;
+  transform: translateX(-50%);
+  background: #222;
+  color: #fff;
+  padding: 0.7rem 1.1rem;
+  border-radius: 8px;
+  font-weight: 700;
+  z-index: 50;
+  max-width: 90vw;
+}
+.toast.warn { background: var(--missing); }
+
+/* ---- print labels ---- */
+.labelPrintArea { display: none; }
+@media print {
+  #appHeader, #app { display: none !important; }
+  .labelPrintArea { display: block !important; }
+  .labelSlip {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    border: 2px solid #000;
+    padding: 0.5in;
+    width: 3in;
+  }
+  .labelBig { font-size: 22pt; font-weight: 900; margin-bottom: 0.15in; }
+}
+
+/* ---- screen-size override control (Table Data) ---- */
+.deviceTierBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.8rem;
+  background: #eef4fa;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+}
+.deviceTierLabel { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
+.deviceTierNote { font-size: 0.8rem; color: #444; flex-basis: 100%; }
+
+/* ---- screen size (phone/tablet/laptop) ----
+   Driven entirely by the data-device-tier attribute app.js sets on <html>
+   (see computeAutoDeviceTier()/applyDeviceTier()) — Auto mode recomputes it
+   from window width on load and resize; the override in Table Data pins
+   it. Deliberately no separate @media breakpoints duplicating this: one
+   attribute is the single source of truth for both. Tablet and laptop
+   currently share the unscoped rules above (already fluid enough via
+   .fieldGrid/.fieldGridCompact's auto-fill and .entryRow's flex-wrap) —
+   only phone needs a real departure from that, so only "phone" has rules
+   below; the Tablet/Laptop override buttons exist for symmetry and as a
+   future hook, not because they differ from each other today. */
+[data-device-tier="phone"] {
+  font-size: 16px;
+}
+[data-device-tier="phone"] #headerTitle { font-size: 1.05rem; }
+[data-device-tier="phone"] .headerRow { flex-wrap: wrap; row-gap: 0.4rem; }
+
+/* Collection Info / Station / Crew / Hydro sections: one field per row
+   instead of an auto-fill grid that would otherwise squeeze 2-3 narrow
+   columns into ~380px. */
+[data-device-tier="phone"] .fieldGrid,
+[data-device-tier="phone"] .fieldGridCompact {
+  grid-template-columns: 1fr;
+}
+[data-device-tier="phone"] .field.wide { grid-column: span 1; }
+[data-device-tier="phone"] .fieldGridCompact .field.small { max-width: none; }
+
+/* Fish-tab entry rows (and every other .entryRow — Settings' Crew/Gear/
+   Activity/Stations/Assignments reuse the same class): stack fields
+   full-width instead of wrapping several narrow boxes per line. */
+[data-device-tier="phone"] .entryRow {
+  flex-direction: column;
+  align-items: stretch;
+}
+[data-device-tier="phone"] .entryRow .field,
+[data-device-tier="phone"] .entryRow .field.small,
+[data-device-tier="phone"] .entryRow .field.wide {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+[data-device-tier="phone"] .entryRow .bigBtn,
+[data-device-tier="phone"] .entryRow > .smallBtn {
+  width: 100%;
+}
+/* The "current total" hint's absolute positioning exists to keep sibling
+   fields bottom-aligned in a horizontal row (see .currentTotalHint above)
+   — moot once .entryRow is a single column, and left absolute here would
+   overlap the FL field stacked right below Species. */
+[data-device-tier="phone"] .currentTotalHint {
+  position: static;
+  display: block;
+  margin-top: 0.15rem;
+}
+[data-device-tier="phone"] .entryRow { padding-bottom: 0.6rem; }
+
+/* Bigger, thumb-friendly tap targets given the smaller screen. */
+[data-device-tier="phone"] .field input,
+[data-device-tier="phone"] .field select,
+[data-device-tier="phone"] .field textarea,
+[data-device-tier="phone"] .toggleBtn,
+[data-device-tier="phone"] .tabBtn {
+  min-height: 46px;
+}
+
+/* The three Measured/Sacrificed/Tagged Fish jump boxes: one per row
+   instead of squeezing three ~220px tiles into the width. */
+[data-device-tier="phone"] .tabJumpBox { flex-basis: 100%; }
