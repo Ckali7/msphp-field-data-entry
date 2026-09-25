@@ -306,6 +306,8 @@ async function openCollection(collectionNumber) {
   await refreshSacrificed();
   await refreshTagged();
   updateTabCounts();
+  for (const tab of ['measured', 'sacrificed', 'tagged']) await restoreEntryRowDraft(tab);
+  DB.setMeta('lastOpenCollection', collectionNumber);
 }
 
 function loadCollectionIntoForm(c) {
@@ -414,6 +416,7 @@ async function saveCollectionForm() {
   const record = readCollectionForm();
   await DB.put('collections', record);
   collectionFieldDirty = false;
+  DB.setMeta('lastOpenCollection', currentCollectionNumber);
   updateStatusPills();
 }
 
@@ -510,6 +513,7 @@ async function migrateCollectionNumber(activityCode, dateStr) {
   currentCollectionNumber = newNumber;
   $('f_CollectionNumber').value = newNumber;
   $('cnMismatchBanner').hidden = true;
+  DB.setMeta('lastOpenCollection', newNumber);
   await refreshMeasured();
   await refreshSacrificed();
   await refreshTagged();
@@ -575,6 +579,7 @@ async function deleteCurrentCollection() {
   for (const r of tagged) await DB.delete('taggedFish', r.RecordNumber);
   await DB.delete('collections', currentCollectionNumber);
   currentCollectionNumber = null;
+  DB.setMeta('lastOpenCollection', null);
   showView('list');
 }
 
@@ -609,6 +614,59 @@ async function onStationChanged() {
   }
 
   updateStatusPills();
+}
+
+// ---------- fish entry-row draft recovery ----------
+// Per Chris (2026-10): an in-progress fish entry (typed but not yet "Add"ed)
+// only lived in memory before this — fine on a laptop, where a backgrounded
+// tab's state just sits there, but a phone OS is much more likely to
+// actually discard a backgrounded tab under memory pressure and reload it
+// fresh, losing anything not yet written to IndexedDB. Already-added fish
+// were always safe (DB.put() happens the moment Add is clicked/Entered) —
+// this only covers the narrow "mid-typing, not yet Added" window, saved as
+// a restorable draft (not a real record) keyed to the collection so it
+// can't bleed into a different one. Cleared the moment the real Add
+// succeeds, so a restored draft never re-appears after its fish is in.
+const ENTRY_ROW_DRAFT_FIELDS = {
+  measured: ['mf_SpeciesCode', 'mf_FL', 'mf_TL', 'mf_SL', 'mf_SexCode', 'mf_TotalWeight', 'mf_Comments'],
+  sacrificed: ['sf_SampleNumber', 'sf_SpeciesCode', 'sf_TL', 'sf_FL', 'sf_SL', 'sf_TotalWeight', 'sf_SexCode', 'sf_GonadStage', 'sf_GonadWeight', 'sf_Comments'],
+  tagged: ['tf_TagNumber', 'tf_TagNumber2', 'tf_PrimaryID', 'tf_SpeciesCode', 'tf_TagType', 'tf_DispositionCode', 'tf_TL', 'tf_FL', 'tf_SL', 'tf_Comments'],
+};
+const ENTRY_ROW_DRAFT_CHECKBOXES = {
+  measured: ['mf_FishTaken'],
+  sacrificed: ['sf_GonadsTaken', 'sf_OtolithTaken'],
+  tagged: [],
+};
+
+function entryRowDraftKey(tab) {
+  return `entryRowDraft_${tab}_${currentCollectionNumber}`;
+}
+
+function saveEntryRowDraft(tab) {
+  if (!currentCollectionNumber) return;
+  const fields = ENTRY_ROW_DRAFT_FIELDS[tab];
+  const checks = ENTRY_ROW_DRAFT_CHECKBOXES[tab];
+  const hasContent = fields.some((id) => $(id).value) || checks.some((id) => $(id).checked);
+  if (!hasContent) { DB.setMeta(entryRowDraftKey(tab), null); return; }
+  const values = {};
+  for (const id of fields) values[id] = $(id).value;
+  for (const id of checks) values[id] = $(id).checked;
+  DB.setMeta(entryRowDraftKey(tab), values);
+}
+
+async function restoreEntryRowDraft(tab) {
+  if (!currentCollectionNumber) return;
+  const values = await DB.getMeta(entryRowDraftKey(tab), null);
+  if (!values) return;
+  for (const id of ENTRY_ROW_DRAFT_FIELDS[tab]) if (values[id]) $(id).value = values[id];
+  for (const id of ENTRY_ROW_DRAFT_CHECKBOXES[tab]) if (values[id]) $(id).checked = values[id];
+  if (tab === 'measured') updateMeasuredFieldVisibility(numOrNull($('mf_SpeciesCode').value));
+  toast('Restored an in-progress fish entry that hadn’t been added yet.');
+}
+
+function clearEntryRowDraft(tab) {
+  if (!currentCollectionNumber) return;
+  DB.setMeta(entryRowDraftKey(tab), null);
 }
 
 // ---------- Measured Fish ----------
@@ -872,6 +930,7 @@ async function addMeasuredFish() {
     FishMeas: $('f_FishMeas').value || null,
   };
   await DB.put('measuredFish', record);
+  clearEntryRowDraft('measured');
 
   // sync TotalCount across this species' rows in this collection (mirrors original behavior)
   const updated = await DB.getAllByIndex('measuredFish', 'byCollection', currentCollectionNumber);
@@ -985,6 +1044,7 @@ async function addSacrificedFish() {
     Comments: $('sf_Comments').value || null,
   };
   await DB.put('sacrificedFish', record);
+  clearEntryRowDraft('sacrificed');
 
   for (const id2 of ['sf_TL','sf_FL','sf_SL','sf_TotalWeight','sf_GonadWeight','sf_Comments']) $(id2).value = '';
   $('sf_GonadsTaken').checked = false;
@@ -1076,6 +1136,7 @@ async function addTaggedFish() {
     Comments: $('tf_Comments').value || null,
   };
   await DB.put('taggedFish', record);
+  clearEntryRowDraft('tagged');
 
   const warnEl = $('taggedWarning');
   const recapture = LOOKUPS.tagType.find((t) => /recap/i.test(t.name));
@@ -1229,6 +1290,14 @@ function wireEvents() {
     if (!$('viewEntry').hidden && currentCollectionNumber && !hydroComplete(readCollectionForm())) {
       toast(`Heads up: Collection ${currentCollectionNumber}'s Hydrographic data is still incomplete.`, true);
     }
+    // A deliberate "done with this collection for now" — stop offering to
+    // auto-resume it on next launch (see init()). Getting interrupted
+    // mid-entry is different (no click here), and should resume right back
+    // into it. Also drop any saved entry-row drafts so a half-typed fish
+    // abandoned (not backgrounded) doesn't resurface if this collection is
+    // reopened later.
+    DB.setMeta('lastOpenCollection', null);
+    if (currentCollectionNumber) for (const tab of ['measured', 'sacrificed', 'tagged']) clearEntryRowDraft(tab);
     showView('list');
   });
   $('btnStatus').addEventListener('click', () => showView('status'));
@@ -1372,10 +1441,20 @@ function wireEvents() {
   // visibility API fires reliably when a laptop sleeps or a tab is
   // switched away from, even though no individual field's blur/change event
   // fired yet. Flushes whatever's currently on the Collection tab so a
-  // half-typed field isn't the one thing at risk.
+  // half-typed field isn't the one thing at risk. On phones specifically
+  // (per Chris, 2026-10) backgrounding is far more likely to end in the OS
+  // fully discarding the tab's memory and reloading it fresh later —
+  // unlike a laptop, where a backgrounded tab's in-memory state usually
+  // just sits there untouched — so this also flushes whatever's half-typed
+  // in the currently-visible fish entry row (not yet "Add"ed) as a
+  // restorable draft; see saveEntryRowDraft()/restoreEntryRowDraft() below.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && !$('viewEntry').hidden) {
       saveCollectionForm();
+      // All three, not just whichever tab is currently visible — a value
+      // typed into a fish tab is still sitting in its (CSS-)hidden panel
+      // after switching to a different tab, still just as much at risk.
+      for (const tab of ['measured', 'sacrificed', 'tagged']) saveEntryRowDraft(tab);
     }
   });
 
@@ -1432,7 +1511,19 @@ async function init() {
   await refreshStationList();
   wireEvents();
   setDeviceTierOverride(await DB.getMeta('deviceTierOverride', 'auto'));
-  showView('list');
+  // Per Chris (2026-10): if the app got interrupted mid-collection (phone
+  // OS discarding a backgrounded tab, battery dying, etc.) rather than
+  // deliberately left via Home, land back in that same collection instead
+  // of the list — paired with the visibilitychange draft flush above, this
+  // means reopening the app after an interruption shows exactly what was
+  // there before, nothing to hunt for. lastOpenCollection is cleared by a
+  // deliberate Home click or deleting the collection (see those handlers).
+  const lastOpen = await DB.getMeta('lastOpenCollection', null);
+  if (lastOpen && await DB.get('collections', lastOpen)) {
+    await openCollection(lastOpen);
+  } else {
+    showView('list');
+  }
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

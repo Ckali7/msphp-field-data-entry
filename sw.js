@@ -1,7 +1,7 @@
 // Caches the app shell so it launches even with zero connectivity, including
 // the very first "install" (once you've loaded it once on a device while it
 // had a connection, or copied the whole PWA folder onto it directly).
-const CACHE_NAME = 'msphp-field-v6';
+const CACHE_NAME = 'msphp-field-v7';
 const ASSETS = [
   './',
   './index.html',

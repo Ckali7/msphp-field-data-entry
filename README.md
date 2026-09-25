@@ -302,6 +302,31 @@ device started from an existing one.
   chance to cancel the refresh and finish (or click Add) before it happens.
   Already-added fish and already-saved fields never trigger this — see the
   `beforeunload` handler in `js/app.js`.
+- **Phones specifically — backgrounding is handled differently than on a
+  laptop** (built 2026-10, per Chris, after being asked directly whether
+  mobile was really as safe as laptop use). A laptop's backgrounded tab
+  just sits there in memory untouched; a phone OS is much more likely to
+  fully discard a backgrounded tab under memory pressure and reload it
+  fresh when you switch back — and that reload doesn't reliably fire
+  `beforeunload` the way an in-app refresh does, so that safety net alone
+  isn't enough on mobile. Two things cover this:
+  - The same `visibilitychange` flush above also saves whatever's
+    currently typed into **any** fish tab's entry row — not just the one
+    you're looking at — as a recoverable draft (not a real record yet),
+    even if you haven't clicked Add.
+  - If the app reloads while a collection was open (rather than you
+    deliberately going Home), it **reopens that same collection
+    automatically** instead of dropping you at the Collections list — and
+    if a draft was saved for it, restores it into the entry row with a
+    toast confirming it happened, exactly as you left it. Already-added
+    fish were never at risk either way (see the point above) — this
+    specifically closes the "typed but not yet Added" gap that's a real
+    risk on mobile and a much smaller one on a laptop. Explicitly going
+    Home (or deleting the collection) clears both the auto-resume and any
+    leftover draft, so a normal end-of-session doesn't drag stale
+    half-typed data into the next one. See `saveEntryRowDraft()` /
+    `restoreEntryRowDraft()` and the `lastOpenCollection` meta key in
+    `js/app.js`.
 - **What none of the above protects against:** the device itself being lost,
   dropped overboard, stolen, wiped/reimaged, or having its browser data
   cleared by someone "cleaning up." Local storage is still just local — it
