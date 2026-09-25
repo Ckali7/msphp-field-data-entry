@@ -737,11 +737,14 @@ function updateFishEntryGating(complete) {
     row.classList.toggle('gated', !complete);
     row.querySelectorAll('input, select, textarea, button').forEach((el) => { el.disabled = !complete; });
   }
-  // The jump-to boxes at the bottom of the Collection tab show the same
-  // locked look, so it's visible before even switching tabs — clicking
+  // The jump-to boxes at the bottom of the Collection tab, and (2026-10) the
+  // Measured/Sacrificed/Tagged Fish buttons in the top tab strip, show the
+  // same locked look, so it's visible before even switching tabs — clicking
   // still navigates (existing fish data stays reviewable), it just won't
   // let you add anything new until that same check passes on the tab itself.
   document.querySelectorAll('.tabJumpBox').forEach((b) => b.classList.toggle('gated', !complete));
+  document.querySelectorAll('#tabStrip .tabBtn[data-tab]:not([data-tab="collection"])')
+    .forEach((b) => b.classList.toggle('gated', !complete));
 }
 
 async function deleteCurrentCollection() {

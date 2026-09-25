@@ -460,6 +460,35 @@ collection is opened (`showView()` toggling `.collapsed` on `#appHeader`),
 expanding back via a tap on that tab (`#btnHeaderToggle`). No effect on
 tablet/laptop — entirely `[data-device-tier="phone"]`-scoped CSS.
 
+### Collection sub-tabs — Collection / Measured / Sacrificed / Tagged, and Delete moved off them
+
+Changed 2026-10, per Chris, from real mobile use. `#tabStrip` (inside a
+collection) used to hold just "Collection" and "Delete Collection" — on
+phone those two wrapped onto separate lines, off-center and stacked, and
+Delete sat right there at full tab size on every sub-tab including
+Measured Fish, an easy target for an accidental tap. Now:
+
+- The tab strip is **Collection / Measured Fish / Sacrificed Fish / Tagged
+  Fish** — a clean 4-up row (wraps to 2×2 on phone) that lets you jump
+  directly between any of them, not just back to Collection first. Same
+  gated/locked look as the existing jump-to boxes when Collection metadata
+  isn't complete yet (`.tabBtn.gated`, toggled in `updateFishEntryGating()`
+  alongside the jump boxes) — clicking still navigates either way, since
+  the actual block is the entry row itself, disabled regardless of how you
+  got there.
+- **Delete Collection moved off the tab strip entirely** — it only exists
+  on the Collection tab now (`.deleteCollectionRow`, at the very bottom,
+  past the fish-tab jump boxes), and is deliberately smaller/quieter than
+  everything above it rather than tab-sized. Still needs the same
+  `confirm()` it always has ("Delete collection X and everything in
+  it?... This cannot be undone.") — nothing changed about the actual
+  deletion, just where the button lives and how much it stands out.
+- The existing Measured/Sacrificed/Tagged Fish jump boxes further down the
+  Collection tab (the ones with fish counts) are unchanged and still
+  there — the top tab strip is an additional, faster way to switch between
+  tabs once you're already in one, not a replacement for that first
+  "what's next" prompt.
+
 ### Subsample tool — one-time prompt instead of a persistent checkbox
 
 Changed 2026-10, per Chris — the checkbox + full sentence on Measured Fish

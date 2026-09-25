@@ -50,7 +50,9 @@
 
     <nav id="tabStrip">
       <button class="tabBtn active" data-tab="collection">Collection</button>
-      <button class="tabBtn deleteTab" id="btnDeleteCollection">Delete Collection</button>
+      <button class="tabBtn" data-tab="measured">Measured Fish</button>
+      <button class="tabBtn" data-tab="sacrificed">Sacrificed Fish</button>
+      <button class="tabBtn" data-tab="tagged">Tagged Fish</button>
     </nav>
 
     <!-- ---- TAB: Collection info ---- -->
@@ -174,6 +176,10 @@
         <button class="tabJumpBox" data-tab="measured">Measured Fish <span id="tabCountMeasured" class="tabCount"></span></button>
         <button class="tabJumpBox" data-tab="sacrificed">Sacrificed Fish <span id="tabCountSacrificed" class="tabCount"></span></button>
         <button class="tabJumpBox" data-tab="tagged">Tagged Fish <span id="tabCountTagged" class="tabCount"></span></button>
+      </div>
+
+      <div class="deleteCollectionRow">
+        <button class="smallBtn deleteTab" id="btnDeleteCollection">Delete Collection</button>
       </div>
     </div>
 

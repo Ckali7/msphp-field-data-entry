@@ -139,7 +139,14 @@ main { padding: 0.75rem 0.9rem 4rem; }
   background: #eee;
   cursor: pointer;
 }
-.deleteTab { margin-left: auto; background: #ffe0e0; }
+/* Per Chris (2026-10): used to live in the top tab strip on every sub-tab
+   (Measured/Sacrificed/Tagged Fish included) and was sized the same as the
+   other tabs — too easy to hit by accident. Now Collection-tab-only, moved
+   to the bottom of its content (past the fish-tab jump boxes, not the
+   first thing in view), and deliberately smaller/quieter than everything
+   above it; the delete itself already required a confirm() either way. */
+.deleteCollectionRow { margin-top: 0.8rem; text-align: right; }
+.deleteTab { background: #ffe0e0; font-size: 0.82rem; min-height: 30px; }
 /* Per Chris (2026-10): the persistent checkbox+sentence row ate a whole
    line for something set once per collection and rarely revisited — now a
    compact tappable status pill instead (askSubsampleChoice() in app.js
@@ -218,6 +225,12 @@ main { padding: 0.75rem 0.9rem 4rem; }
   cursor: pointer;
 }
 .tabBtn.active { background: var(--accent); color: #fff; border-color: var(--accent-dark); }
+/* Same "locked" look as .tabJumpBox.gated — the top tab strip now offers a
+   second way into Measured/Sacrificed/Tagged Fish (per Chris, 2026-10), so
+   it needs the same visual cue as the jump boxes for when Collection
+   metadata isn't complete yet; the actual entry row still enforces this
+   regardless of how you navigated in (see updateFishEntryGating()). */
+.tabBtn.gated { background: #eee; color: #555; border-color: #999; }
 .tabCount { font-weight: 400; opacity: 0.85; }
 
 .tabPanel { padding-top: 0.25rem; }
