@@ -25,16 +25,40 @@ function setSystemToggle(system) {
 // on <html> — no separate @media breakpoints duplicating this logic.
 let deviceTierOverride = 'auto';
 
+// matchMedia rather than a raw innerWidth comparison — functionally the
+// same thresholds, but per Chris (2026-10) Auto wasn't reliably picking
+// Phone on a real phone despite the manual Phone override working fine
+// (confirming the CSS/attribute plumbing itself was never the problem).
+// matchMedia is the standard, more robust way browsers expect this kind of
+// check to be done, and .matches reflects the CURRENT viewport at read
+// time rather than a value computed once and potentially stale.
+const PHONE_QUERY = window.matchMedia('(max-width: 480px)');
+const TABLET_QUERY = window.matchMedia('(max-width: 1024px)');
+
 function computeAutoDeviceTier() {
-  const w = window.innerWidth;
-  if (w <= 480) return 'phone';
-  if (w <= 1024) return 'tablet';
+  if (PHONE_QUERY.matches) return 'phone';
+  if (TABLET_QUERY.matches) return 'tablet';
   return 'laptop';
 }
 
 function applyDeviceTier() {
   const tier = deviceTierOverride === 'auto' ? computeAutoDeviceTier() : deviceTierOverride;
   document.documentElement.setAttribute('data-device-tier', tier);
+  const readout = $('deviceTierReadout');
+  if (readout) {
+    readout.textContent = `Detected width: ${window.innerWidth}px → ${tier}` +
+      (deviceTierOverride !== 'auto' ? ` (Auto would also currently read ${computeAutoDeviceTierIgnoringOverride()})` : '');
+  }
+}
+
+// Only used for the diagnostic readout above, so switching to a manual
+// override still shows what Auto is independently seeing right now — the
+// one thing that would have made the reported bug instantly diagnosable
+// instead of guesswork.
+function computeAutoDeviceTierIgnoringOverride() {
+  if (PHONE_QUERY.matches) return 'phone';
+  if (TABLET_QUERY.matches) return 'tablet';
+  return 'laptop';
 }
 
 function setDeviceTierOverride(value) {
@@ -151,9 +175,115 @@ function showView(name) {
   $('viewEntry').hidden = name !== 'entry';
   $('viewStatus').hidden = name !== 'status';
   $('viewSettings').hidden = name !== 'settings';
+  // Per Chris (2026-10): no way to tell at a glance which of these you
+  // were in — none of them highlighted the current one.
+  $('btnHome').classList.toggle('active', name === 'list');
+  $('btnStatus').classList.toggle('active', name === 'status');
+  $('btnSettings').classList.toggle('active', name === 'settings');
+  // On phone, the header (nav row + title + badge) eats real height and is
+  // sticky/visible the whole time — collapse it to a thin pull-tab whenever
+  // entering a collection specifically (per Chris, 2026-10 — that's where
+  // the space is actually needed), full-size everywhere else. The toggle
+  // button (wired in wireEvents()) pulls it back up without leaving the
+  // collection. This is a no-op visually on tablet/laptop — the CSS that
+  // reacts to it is entirely scoped to [data-device-tier="phone"].
+  $('appHeader').classList.toggle('collapsed', name === 'entry');
+  // See the Android back-button section below for what this pairs with.
+  if (name === 'list') {
+    awayFromListHistoryPushed = false;
+  } else if (!awayFromListHistoryPushed) {
+    history.pushState({ msphpAway: true }, '');
+    awayFromListHistoryPushed = true;
+  }
   if (name === 'list') { renderCollectionsList(); renderBackupBanner(); }
   if (name === 'status') { primeStationStatusDefaults(); renderStationStatus(); }
   if (name === 'settings') { showSettingsTab('crew'); }
+}
+
+// A deliberate "done with this collection for now" — shared by the Home
+// button and the Android-back-button handler below. Stops offering to
+// auto-resume it on next launch (see init()); getting interrupted
+// mid-entry is different (neither of these runs), and should resume right
+// back into it. Also drops any saved entry-row drafts so a half-typed fish
+// abandoned (not backgrounded) doesn't resurface if reopened later.
+async function leaveForHome() {
+  // Hydro isn't required to move on (per Chris — some staff prefer to come
+  // back and fill it in later), but leaving it behind unnoticed is easy to
+  // do, so flag it in the moment you actually leave this collection.
+  // Non-blocking — just a reminder, not a gate.
+  if (!$('viewEntry').hidden && currentCollectionNumber && !hydroComplete(readCollectionForm())) {
+    toast(`Heads up: Collection ${currentCollectionNumber}'s Hydrographic data is still incomplete.`, true);
+  }
+  // Flush any Collection-tab field mid-edit before navigating — once this
+  // view is hidden, hasUnsavedChanges() (used by both beforeunload and the
+  // back-button trap below) stops looking at it, on the theory that
+  // deliberately leaving a collection means whatever wasn't finished is
+  // considered abandoned, not at risk. That's only actually true if it's
+  // safely in IndexedDB by the time we get there. Must be awaited before
+  // clearing lastOpenCollection below — saveCollectionForm() itself sets
+  // lastOpenCollection back to the real collection number as its own last
+  // step, so firing both without waiting raced the two writes and often
+  // left the real number in place instead of null.
+  if (currentCollectionNumber) await saveCollectionForm();
+  DB.setMeta('lastOpenCollection', null);
+  if (currentCollectionNumber) for (const tab of ['measured', 'sacrificed', 'tagged']) clearEntryRowDraft(tab);
+  showView('list');
+}
+
+// ---------- Android back button / swipe-back ----------
+// Per Chris (2026-10): without this, Android's back gesture just falls
+// through to the browser's real session history — often nothing meaningful
+// for a PWA opened fresh from the home screen (drops straight out with no
+// warning), or an unpredictable jump if there happened to be prior history.
+// This traps it with one extra history entry pushed the moment the app
+// leaves the Collections list (showView() below), so a real back press
+// reliably fires 'popstate' while still on this page instead of actually
+// navigating anywhere. From any non-list view, that's treated exactly like
+// tapping Home (per Chris: "most useful would be to go back to the home
+// screen") — leaveForHome() already flushes anything pending before
+// getting here, on the theory that deliberately leaving a collection means
+// whatever wasn't finished is abandoned, not at risk; by design that
+// makes hasUnsavedChanges() always false once back at the list, so it's
+// not the right check for the second press. From the list itself —
+// nowhere further back to go within the app — it's treated as trying to
+// exit: the meaningful risk left at that point isn't an unsaved field,
+// it's unbacked-up data (the same "dirty" signal the backup banner
+// already tracks), so that's what's checked, with the same offer either
+// way — cancel and it re-arms the trap so a second/third back press gets
+// the same protection, not just the first, and the Backup Now button is
+// right there on the list this returns to.
+//
+// The backup check is async (an IndexedDB read), but popstate itself needs
+// an answer synchronously — the real back navigation this is reacting to
+// has already happened by the time this fires, so anything that doesn't
+// re-plant a history entry *immediately* leaves a gap where a second real
+// back press (or the browser just continuing on its own) could slip
+// through while the read is still in flight. So this always re-arms first,
+// synchronously, then asynchronously decides whether to actually let the
+// exit through after all via a real history.back() call — suppressNext
+// stops that programmatic call from re-triggering this same handler.
+let awayFromListHistoryPushed = false;
+let suppressNextPopstate = false;
+
+window.addEventListener('popstate', () => {
+  if (suppressNextPopstate) { suppressNextPopstate = false; return; }
+  if (awayFromListHistoryPushed) {
+    awayFromListHistoryPushed = false;
+    leaveForHome();
+    return;
+  }
+  history.pushState({ msphpAway: false }, '');
+  confirmExitIfUnbackedUp();
+});
+
+async function confirmExitIfUnbackedUp() {
+  const { dirty } = await DB.getBackupStatus();
+  const reallyLeave = !dirty || confirm('Leave the app? There’s data on this device that hasn’t been backed up yet — Cancel to go back and tap "Backup Now" first.');
+  if (reallyLeave) {
+    suppressNextPopstate = true;
+    history.back();
+  }
+  // Otherwise: stay — already re-armed by the pushState above.
 }
 
 function relativeTime(isoString) {
@@ -213,9 +343,44 @@ function showTab(name) {
   // gets a CollectionNumber once Activity+Date are set on the Collection
   // tab, so sub-tabs (e.g. Sacrificed's auto Sample #) need a refresh the
   // first time they're actually shown, not just when re-opening a saved one.
-  if (name === 'measured') { refreshMeasured(); updateMeasuredFieldVisibility(numOrNull($('mf_SpeciesCode').value)); }
+  if (name === 'measured') {
+    refreshMeasured();
+    updateMeasuredFieldVisibility(numOrNull($('mf_SpeciesCode').value));
+    maybeAskSubsampleChoice();
+  }
   if (name === 'sacrificed') refreshSacrificed();
   if (name === 'tagged') refreshTagged();
+}
+
+// ---------- subsample tool (Measured Fish) ----------
+// Per Chris (2026-10): a persistent checkbox+sentence ate a whole line for
+// something decided once per collection and rarely touched again — now a
+// one-time prompt the first time Measured Fish is opened for a collection
+// (tracked in-memory per session, not persisted — a session-spanning
+// reload re-asking once more is an acceptable trade for not persisting
+// yet another meta key), replaced by a compact tappable status pill that
+// still lets it be changed later if needed.
+const subsampleAskedFor = new Set();
+
+function updateSubsampleIndicator() {
+  const on = $('f_SubSampleTool').checked;
+  const btn = $('btnSubsampleIndicator');
+  btn.textContent = `Subsample: ${on ? 'ON' : 'OFF'}`;
+  btn.classList.toggle('subsampleOn', on);
+}
+
+function askSubsampleChoice() {
+  const on = confirm('Use the subsample tool for this collection?\n\nFlags "TAKE THIS FISH" for under-sampled size bins as fish are added.\n\nOK = Yes, Cancel = No. You can change this later by tapping the Subsample button.');
+  $('f_SubSampleTool').checked = on;
+  updateSubsampleIndicator();
+  saveCollectionForm();
+}
+
+function maybeAskSubsampleChoice() {
+  updateSubsampleIndicator();
+  if (!currentCollectionNumber || subsampleAskedFor.has(currentCollectionNumber)) return;
+  subsampleAskedFor.add(currentCollectionNumber);
+  askSubsampleChoice();
 }
 
 // ---------- Collections list ----------
@@ -308,6 +473,12 @@ async function openCollection(collectionNumber) {
   updateTabCounts();
   for (const tab of ['measured', 'sacrificed', 'tagged']) await restoreEntryRowDraft(tab);
   DB.setMeta('lastOpenCollection', collectionNumber);
+  // A collection that already has measured fish already had its subsample
+  // choice made (whatever's on the saved record, just loaded above) —
+  // don't re-prompt for it on every reopen, only for one that's never had
+  // any yet.
+  const existingMeasured = await DB.getAllByIndex('measuredFish', 'byCollection', collectionNumber);
+  if (existingMeasured.length) subsampleAskedFor.add(collectionNumber);
 }
 
 function loadCollectionIntoForm(c) {
@@ -378,10 +549,22 @@ function readCollectionForm() {
 }
 
 // True only between a keystroke/edit on the Collection tab and that field's
-// next 'change' (save). Used by beforeunload below — deliberately NOT based
-// on which field currently has focus, since a field stays focused after
-// being saved too (e.g. right after picking a date) and that's not "unsaved."
+// next 'change' (save). Used by hasUnsavedChanges() below — deliberately
+// NOT based on which field currently has focus, since a field stays
+// focused after being saved too (e.g. right after picking a date) and
+// that's not "unsaved."
 let collectionFieldDirty = false;
+
+// Shared by beforeunload, the Android-back-button trap, and the
+// service-worker auto-update reload guard — anywhere something is about to
+// navigate away/reload and needs to know whether that's safe right now.
+function hasUnsavedChanges() {
+  if ($('viewEntry').hidden) return false;
+  const pendingMeasured = ['mf_SpeciesCode','mf_TL','mf_FL','mf_SL','mf_TotalWeight','mf_Comments'].some((id) => $(id).value);
+  const pendingSacrificed = ['sf_SpeciesCode','sf_TL','sf_FL','sf_SL','sf_TotalWeight','sf_Comments'].some((id) => $(id).value);
+  const pendingTagged = ['tf_TagNumber','tf_TagNumber2','tf_PrimaryID','tf_SpeciesCode','tf_TL','tf_FL','tf_SL','tf_Comments'].some((id) => $(id).value);
+  return collectionFieldDirty || pendingMeasured || pendingSacrificed || pendingTagged;
+}
 
 // True only while the current Gear value was set BY the month-based default,
 // not chosen by a person — so a later Date change can keep it in sync, but
@@ -1282,25 +1465,9 @@ function wireEvents() {
     }
   });
 
-  $('btnHome').addEventListener('click', () => {
-    // Hydro isn't required to move on (per Chris — some staff prefer to
-    // come back and fill it in later), but leaving it behind unnoticed is
-    // easy to do, so flag it in the moment you actually leave this
-    // collection. Non-blocking — just a reminder, not a gate.
-    if (!$('viewEntry').hidden && currentCollectionNumber && !hydroComplete(readCollectionForm())) {
-      toast(`Heads up: Collection ${currentCollectionNumber}'s Hydrographic data is still incomplete.`, true);
-    }
-    // A deliberate "done with this collection for now" — stop offering to
-    // auto-resume it on next launch (see init()). Getting interrupted
-    // mid-entry is different (no click here), and should resume right back
-    // into it. Also drop any saved entry-row drafts so a half-typed fish
-    // abandoned (not backgrounded) doesn't resurface if this collection is
-    // reopened later.
-    DB.setMeta('lastOpenCollection', null);
-    if (currentCollectionNumber) for (const tab of ['measured', 'sacrificed', 'tagged']) clearEntryRowDraft(tab);
-    showView('list');
-  });
+  $('btnHome').addEventListener('click', leaveForHome);
   $('btnStatus').addEventListener('click', () => showView('status'));
+  $('btnHeaderToggle').addEventListener('click', () => $('appHeader').classList.toggle('collapsed'));
   $('btnSettings').addEventListener('click', () => showView('settings'));
   wireStationStatusEvents();
 
@@ -1352,11 +1519,20 @@ function wireEvents() {
       DB.setMeta('deviceTierOverride', b.dataset.tier);
     });
   });
+  // matchMedia's own change event fires exactly when a query's truth value
+  // flips (resize, rotation, zoom) — more reliable on mobile than a plain
+  // resize listener, which can be inconsistent around orientation changes.
+  // Kept alongside resize/orientationchange as belt-and-suspenders since
+  // this is the exact detection path that was reported not working.
+  PHONE_QUERY.addEventListener('change', applyDeviceTier);
+  TABLET_QUERY.addEventListener('change', applyDeviceTier);
   let resizeTimer = null;
-  window.addEventListener('resize', () => {
+  const debouncedApplyDeviceTier = () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(applyDeviceTier, 150);
-  });
+  };
+  window.addEventListener('resize', debouncedApplyDeviceTier);
+  window.addEventListener('orientationchange', debouncedApplyDeviceTier);
 
   // Collection tab: auto-save on change, plus the special-case handlers
   const collectionFieldIds = ['f_ActivityCode','f_Date','f_Time','f_Time2','f_Station','f_SoundSystem',
@@ -1414,6 +1590,7 @@ function wireEvents() {
 
   $('btnAddMeasured').addEventListener('click', addMeasuredFish);
   $('btnToggleRareFields').addEventListener('click', () => setMfRareFieldsShown(!mfRareFieldsShown));
+  $('btnSubsampleIndicator').addEventListener('click', askSubsampleChoice);
   // Per Chris (2026-09): Enter anywhere in the row should act like clicking
   // Add Fish — addMeasuredFish() already validates Species/length itself, so
   // this just reuses that (a premature Enter shows the same toast the button
@@ -1474,13 +1651,7 @@ function wireEvents() {
   $('panelCollection').addEventListener('input', () => { collectionFieldDirty = true; });
 
   window.addEventListener('beforeunload', (ev) => {
-    if ($('viewEntry').hidden) return;
-
-    const pendingMeasured = ['mf_SpeciesCode','mf_TL','mf_FL','mf_SL','mf_TotalWeight','mf_Comments'].some((id) => $(id).value);
-    const pendingSacrificed = ['sf_SpeciesCode','sf_TL','sf_FL','sf_SL','sf_TotalWeight','sf_Comments'].some((id) => $(id).value);
-    const pendingTagged = ['tf_TagNumber','tf_TagNumber2','tf_PrimaryID','tf_SpeciesCode','tf_TL','tf_FL','tf_SL','tf_Comments'].some((id) => $(id).value);
-
-    if (collectionFieldDirty || pendingMeasured || pendingSacrificed || pendingTagged) {
+    if (hasUnsavedChanges()) {
       ev.preventDefault();
       ev.returnValue = '';
     }
@@ -1518,6 +1689,13 @@ async function init() {
   // means reopening the app after an interruption shows exactly what was
   // there before, nothing to hunt for. lastOpenCollection is cleared by a
   // deliberate Home click or deleting the collection (see those handlers).
+  // A floor for the back-button trap (see the popstate handler above): a
+  // real "second back press" needs something actually poppable in session
+  // history to fire at all — without this, once the one entry showView()
+  // pushed on the way into a collection gets consumed by the first back
+  // press, a second press has nothing left to pop and popstate silently
+  // never fires, instead of reaching the exit-confirmation logic.
+  history.pushState({ msphpAway: false }, '');
   const lastOpen = await DB.getMeta('lastOpenCollection', null);
   if (lastOpen && await DB.get('collections', lastOpen)) {
     await openCollection(lastOpen);
@@ -1525,7 +1703,31 @@ async function init() {
     showView('list');
   }
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    // A basic register() leaves the update check to the browser's own
+    // timing, which can leave a device running stale cached JS for a
+    // while after a real fix ships — a real risk of confusion when
+    // debugging "why doesn't the fix show up" reports (per Chris, 2026-10).
+    // reg.update() forces an immediate check every load instead of
+    // waiting, and if a genuinely new version installs while an old one
+    // was already controlling the page, reload once to actually start
+    // using it — but only when it's safe to (see hasUnsavedChanges()), so
+    // this never yanks the page out from under someone mid-entry.
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            if (hasUnsavedChanges()) {
+              toast('An app update is ready — it’ll finish applying next time the page reloads.');
+            } else {
+              window.location.reload();
+            }
+          }
+        });
+      });
+      reg.update().catch(() => {});
+    }).catch(() => {});
   }
   // Best-effort: ask the browser not to evict this device's local data under
   // storage pressure (relevant since this app may sit unused for days/weeks

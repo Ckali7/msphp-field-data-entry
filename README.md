@@ -423,12 +423,85 @@ well from tablet width up — so only `[data-device-tier="phone"]` has real
 overrides: one field per row instead of a multi-column grid, entry rows
 (fish tabs, and every Table Data add-form, which reuses the same
 `.entryRow` class) stacked full-width instead of wrapping several narrow
-boxes per line, bigger tap targets, and the header wrapping instead of
-overflowing. The Tablet/Laptop buttons exist for symmetry and as a future
-hook, not because they differ from each other today. Every `.dataTable`
-scrolls horizontally instead of overflowing the page at any width — wide
-tables (the 10-column Collections list, 11-column Sacrificed/Tagged Fish
-detail) genuinely need it on a phone, and it's a no-op elsewhere.
+boxes per line, bigger tap targets, and the header collapsing (see below)
+instead of eating a large share of a small screen. The Tablet/Laptop
+buttons exist for symmetry and as a future hook, not because they differ
+from each other today. Every `.dataTable` scrolls horizontally instead of
+overflowing the page at any width — wide tables (the 10-column Collections
+list, 11-column Sacrificed/Tagged Fish detail) genuinely need it on a
+phone, and it's a no-op elsewhere.
+
+**Fixed 2026-10, per Chris**: Auto wasn't reliably detecting Phone on a
+real device, even though picking Phone manually worked fine (confirming
+the CSS/attribute side was never the problem — just the detection).
+Switched from a raw `window.innerWidth` comparison to `matchMedia`, added
+`orientationchange` alongside `resize`, and — since the actual root cause
+couldn't be fully confirmed without the real device — added a live
+diagnostic line under the Screen Size control ("Detected width: 412px →
+phone") so a future mismatch is immediately visible and reportable instead
+of a guessing game. Also hardened the service worker: it now forces an
+update check on every load and, when safe to (`hasUnsavedChanges()`),
+auto-reloads once a genuinely new version installs — a stale cached
+version was a real possibility given how this bug was investigated.
+
+### Header — active-tab highlight and phone collapse
+
+Two related fixes, both 2026-10 per Chris. First, the three header buttons
+(Collections / Station Status / Table Data) never showed which one you were
+actually in — `showView()` now toggles `.active` on whichever one matches,
+same accent-fill visual language as `.toggleBtn.active` elsewhere.
+
+Second, on phone that header (nav row + title + badge) was eating real
+height while staying sticky/visible the whole time, worst inside a
+collection where the space is needed most. On phone it's now compact
+(icon-only buttons — `.navBtnLabel` text hidden, title/badge hidden
+entirely) and **auto-collapses to a thin "▼ Menu" pull-tab** the moment a
+collection is opened (`showView()` toggling `.collapsed` on `#appHeader`),
+expanding back via a tap on that tab (`#btnHeaderToggle`). No effect on
+tablet/laptop — entirely `[data-device-tier="phone"]`-scoped CSS.
+
+### Subsample tool — one-time prompt instead of a persistent checkbox
+
+Changed 2026-10, per Chris — the checkbox + full sentence on Measured Fish
+ate a whole line for something decided once per collection and rarely
+touched again. The first time Measured Fish is opened for a collection, a
+prompt asks Yes/No once (`askSubsampleChoice()`/`maybeAskSubsampleChoice()`
+in `js/app.js`, tracked per-session in `subsampleAskedFor`, not asked again
+for a collection that already has measured fish on reopen); the checkbox
+itself (`#f_SubSampleTool`) still exists and still drives the exact same
+"TAKE THIS FISH" logic, just hidden — replaced on screen by a compact
+tappable **Subsample: ON/OFF** pill that re-shows the same prompt if you
+need to change it later.
+
+### Android back button / swipe-back
+
+Built 2026-10, per Chris, who asked specifically what the back gesture
+should do. Without handling it, Android's back gesture falls through to
+the browser's real session history — often nothing meaningful for a PWA
+opened fresh from the home screen (drops straight out, no warning) — so
+this traps it with the History API (`js/app.js`, the "Android back
+button" section, `popstate` handler + `pushState` calls in `showView()`
+and at boot in `init()`):
+
+- From anywhere other than the Collections list, one back press returns to
+  the list — the same as tapping the Home button (Chris: *"most useful
+  would be to go back to the home screen"*), including the same
+  incomplete-Hydro reminder and draft cleanup.
+- From the list itself — nowhere further back to go within the app — a
+  back press is treated as trying to exit. If there's data that hasn't
+  been backed up yet (the same "dirty" signal the backup banner already
+  tracks — checking for an unsaved *field*, specifically, isn't
+  meaningful by this point, since leaving a collection already flushes
+  it), a confirmation offers to cancel and go back to tap **Backup Now**
+  first; with nothing unbacked-up, the exit proceeds with no interruption.
+  Canceling re-arms the trap, so a second or third back press in a row
+  gets the same protection, not just the first.
+- The backup check is async but `popstate` needs a synchronous answer (the
+  real back navigation has already happened by the time it fires) — the
+  handler always re-plants a history entry immediately, then decides
+  afterward whether to actually let the exit through via a real
+  `history.back()` call, with a suppression flag so that programmatic call
+  doesn't re-trigger itself.
 
 ## Monthly Station Status (check/balance)
 

@@ -77,6 +77,22 @@ input, select, textarea {
   font-weight: 700;
   min-height: 44px;
 }
+/* Per Chris (2026-10): no way to tell which of Collections/Station Status/
+   Table Data you were actually in — set in showView(), same active-state
+   language (accent fill) used everywhere else in the app (.toggleBtn.active
+   etc). */
+.navBtn.active { background: var(--accent); color: #fff; box-shadow: inset 0 0 0 2px #fff; }
+.headerToggleBtn {
+  display: none;
+  width: 100%;
+  min-height: 26px;
+  border: none;
+  background: var(--accent-dark);
+  color: #fff;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
 .badge {
   padding: 0.3rem 0.6rem;
   border-radius: 4px;
@@ -124,6 +140,12 @@ main { padding: 0.75rem 0.9rem 4rem; }
   cursor: pointer;
 }
 .deleteTab { margin-left: auto; background: #ffe0e0; }
+/* Per Chris (2026-10): the persistent checkbox+sentence row ate a whole
+   line for something set once per collection and rarely revisited — now a
+   compact tappable status pill instead (askSubsampleChoice() in app.js
+   re-shows the same confirm to change it later if needed). */
+.subsampleIndicator { background: #eee; }
+.subsampleIndicator.subsampleOn { background: var(--take-bg); border-color: var(--take-border); color: #7a2e00; }
 
 /* A wrapping div would be the more textbook-correct way to scroll a wide
    table, but display:block directly on <table> (no colspan/rowspan
@@ -493,6 +515,7 @@ main { padding: 0.75rem 0.9rem 4rem; }
 }
 .deviceTierLabel { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
 .deviceTierNote { font-size: 0.8rem; color: #444; flex-basis: 100%; }
+.deviceTierReadout { font-size: 0.78rem; color: var(--accent-dark); flex-basis: 100%; }
 
 /* ---- screen size (phone/tablet/laptop) ----
    Driven entirely by the data-device-tier attribute app.js sets on <html>
@@ -509,7 +532,20 @@ main { padding: 0.75rem 0.9rem 4rem; }
   font-size: 16px;
 }
 [data-device-tier="phone"] #headerTitle { font-size: 1.05rem; }
-[data-device-tier="phone"] .headerRow { flex-wrap: wrap; row-gap: 0.4rem; }
+/* Per Chris (2026-10): the header (nav row + title + badge) was eating a
+   lot of a phone's limited height and stays sticky/visible the whole time.
+   Compact it (icon-only nav buttons, no title/badge text) and let it fully
+   collapse to just a thin pull-tab while inside a collection, where the
+   space matters most — see toggleHeaderCollapsed()/showView() in app.js. */
+[data-device-tier="phone"] .headerRow { flex-wrap: wrap; row-gap: 0.4rem; gap: 0.4rem; padding: 0.4rem 0.5rem; }
+[data-device-tier="phone"] .navBtnLabel { display: none; }
+[data-device-tier="phone"] .navBtn { padding: 0.5rem 0.7rem; min-height: 40px; }
+[data-device-tier="phone"] #headerTitle,
+[data-device-tier="phone"] #onlineBadge { display: none; }
+[data-device-tier="phone"] .headerToggleBtn { display: block; }
+[data-device-tier="phone"] #appHeader.collapsed .headerRow { display: none; }
+[data-device-tier="phone"] #appHeader.collapsed .headerToggleBtn::before { content: "\25BC Menu"; }
+[data-device-tier="phone"] .headerToggleBtn::before { content: "\25B2 Hide"; }
 
 /* Collection Info / Station / Crew / Hydro sections: one field per row
    instead of an auto-fill grid that would otherwise squeeze 2-3 narrow

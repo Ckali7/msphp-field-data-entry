@@ -11,13 +11,14 @@
 <body>
 
 <header id="appHeader">
-  <div class="headerRow">
-    <button id="btnHome" class="navBtn">&#8962; Collections</button>
-    <button id="btnStatus" class="navBtn">&#10003; Station Status</button>
-    <button id="btnSettings" class="navBtn">&#9881; Table Data</button>
+  <div class="headerRow" id="headerRow">
+    <button id="btnHome" class="navBtn" title="Collections">&#8962; <span class="navBtnLabel">Collections</span></button>
+    <button id="btnStatus" class="navBtn" title="Station Status">&#10003; <span class="navBtnLabel">Station Status</span></button>
+    <button id="btnSettings" class="navBtn" title="Table Data">&#9881; <span class="navBtnLabel">Table Data</span></button>
     <div id="headerTitle">MSPHP Field Data Entry</div>
     <div id="onlineBadge" class="badge badgeOffline">OFFLINE-READY (LOCAL DATA)</div>
   </div>
+  <button id="btnHeaderToggle" class="headerToggleBtn" aria-label="Show navigation"></button>
 </header>
 
 <main id="app">
@@ -179,10 +180,8 @@
     <!-- ---- TAB: Measured Fish ---- -->
     <div class="tabPanel" id="panelMeasured" hidden>
       <div class="toolbar">
-        <label class="checkField">
-          <input type="checkbox" id="f_SubSampleTool" />
-          Subsample tool ON (flags "TAKE THIS FISH" for under-sampled size bins)
-        </label>
+        <button type="button" id="btnSubsampleIndicator" class="smallBtn subsampleIndicator">Subsample: OFF</button>
+        <input type="checkbox" id="f_SubSampleTool" hidden />
       </div>
       <div id="measuredGateBanner" class="gateBanner" hidden></div>
       <div class="entryRow" id="measuredEntryRow">
@@ -299,6 +298,7 @@
         <button class="toggleBtn" data-tier="laptop">Laptop</button>
       </div>
       <span class="deviceTierNote">Auto picks a layout from the window size and updates live. Pick one to lock it in on this device instead — useful if Auto ever guesses wrong.</span>
+      <span class="deviceTierReadout mono" id="deviceTierReadout"></span>
     </div>
 
     <nav id="settingsTabStrip">
