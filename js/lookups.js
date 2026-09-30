@@ -29,6 +29,14 @@
 //   area) from Desktop\Station Location Match\LStationAssignmentSTA_with_
 //   Descriptions.xlsx -- this table/system never existed in the .mdb at all.
 // The 3 station-system buttons are now WAS / ALT / STA.
+//
+// physicalTagType (added 2026-09-30, per Chris) is a brand-new editable
+// table (Settings > Table Data > Tag Types) for TagType1/2/3 in the
+// Measured Fish "Tagged/Recaps" popup -- the physical tag type (Dart,
+// Internal PIT, etc.), a different concept from the existing tagType table
+// above (which is really a Not Tagged/Tagged/Recaptured STATUS, now
+// surfaced on measuredFish records as TagStatus). No source data exists for
+// it anywhere -- starts empty, populated by hand via Settings.
 const LOOKUPS = {
  "activity": [
   {
@@ -112,6 +120,7 @@ const LOOKUPS = {
    "name": "Recaptured"
   }
  ],
+ "physicalTagType": [],
  "tideStage": [
   {
    "code": 2,

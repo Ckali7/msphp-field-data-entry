@@ -72,6 +72,12 @@ N_THRESHOLD = 20
 # Tier 3 fallback — see module docstring.
 DEFAULT_FIELDS = ["TL", "Sex"]
 
+# Manual, prescriptive overrides that win regardless of what tiers 1-3 would
+# otherwise compute (per Chris, 2026-09-30) — species 7 (Sheepshead) should
+# show TL even though its historical usage rate is below PCT_THRESHOLD. Keep
+# this in sync with the matching override comment in js/speciesFields.js.
+MANUAL_TL_OVERRIDES = {7}
+
 
 def category_fields(common_name):
     name = (common_name or "").lower()
@@ -127,6 +133,11 @@ def main():
 
         config[str(code)] = list(DEFAULT_FIELDS)
         tier_counts["default"] += 1
+
+    for code in MANUAL_TL_OVERRIDES:
+        key = str(code)
+        if key in config and "TL" not in config[key]:
+            config[key] = ["TL"] + config[key]
 
     ordered = {str(code): config[str(code)] for code, _ in sorted(species, key=lambda x: x[0])}
 

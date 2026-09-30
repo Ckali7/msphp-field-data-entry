@@ -181,6 +181,64 @@ device started from an existing one.
   cleared) for rapid same-species entry, so the fast path for several fish
   of one species is: pick Species once, then run the length/Sex sequence
   per fish, only touching Species again when it's time to switch species.
+- **Species-required lengths, strictly enforced (2026-09-30, per Chris).**
+  FL is required for every species; TL is *also* required whenever the
+  current species shows it (the same `SPECIES_EXTRA_FIELDS` list that
+  controls whether TL is shown at all) — not just "any one length" the way
+  it briefly worked before. Applies identically to Add Fish and Enter, since
+  Enter already just calls `addMeasuredFish()` (see above) — a TL-bearing
+  species can no longer slip through on FL alone, and an FL-only species
+  can't be added with only TL/SL filled in either.
+- **Taken checkbox hidden unless Subsample is ON (2026-09-30, per Chris).**
+  In the original Access app, `FishTaken` was only ever set by the
+  subsample "TAKE THIS FISH" logic — there was no manual checkbox concept
+  when subsample was off. This restores that: the Taken checkbox disappears
+  (and unchecks itself) whenever Subsample is OFF, and reappears the moment
+  it's turned on. Wired into `updateSubsampleIndicator()`, so it reacts to
+  every way Subsample's state changes (the one-time prompt, the compact
+  indicator's re-toggle).
+- **Add Counts** (2026-09-30, per Chris) — a small, low-key "Add Counts"
+  button at the top of the Measured Fish tab, for fish that were seen/caught
+  but never individually measured, ported from the legacy Access
+  "RFMeasuredFishAdd" form. Opens a popup listing every species already
+  measured in the collection (same `doNotAdd` exclusion as the existing
+  per-species Total Count editor) with **Current / Add / = / Final Count**
+  columns — type a number in Add and press **=** to fold it into Current
+  (repeatable, so several adds can stack before committing). Nothing is
+  written to the real records until **Update Counts** is clicked, behind
+  the same "cannot be undone" confirm the original used; **Exit (no
+  changes)** discards everything typed. Used once, typically at the end of
+  a collection's data-entry stream, not as a running total kept live
+  alongside individual measurements.
+- **Tagged/Recaps popup** (2026-09-30, per Chris) — a "Tagged/Recaps"
+  button next to Add Fish opens a small overlay for tag/recapture info on
+  the fish currently being entered: **Tag Status** / **Disposition** on one
+  row, then three **Tag Type / Tag Number** pairs below (Tag Number is
+  free-text). Its own **Add Fish** button in the bottom-right just calls the
+  same `addMeasuredFish()` the main button and Enter both use — nothing
+  special about the save, only which fields are populated — and returns to
+  the main Measured Fish area afterward. These fields are cleared after
+  every add (whether or not the popup was opened for that particular fish)
+  so nothing carries over to the next one, and they participate in the same
+  mid-typing draft-recovery system as the rest of the row (see "Data
+  durability" below).
+  - **Tag Status** reuses the existing `LTagType` lookup (Not Tagged /
+    Tagged / Recaptured) — this is the measuredFish field that used to be
+    called `TagType`, **renamed to `TagStatus`** in the schema and the
+    Access-shaped export, since the real lookup behind it is a status, not
+    a tag type. (`DispositionCode` already existed in the schema too, just
+    never surfaced in the UI until now — same `LOOKUPS.disposition` list
+    already used on the Tagged Fish tab.)
+  - **Tag Type 1/2/3** are a genuinely different concept — the physical tag
+    type (Dart, Internal PIT, etc.), since one fish can carry up to 3. No
+    such list existed anywhere (not in the `.mdb`, not in this app), so
+    there's a brand-new editable table for it: Settings > Table Data >
+    **Tag Types**, same simple code+name pattern as Crew/Gear/Activity.
+    Starts empty — populate real tag-type names there before this field is
+    useful.
+  - `TagType1`/`TagNumber1`/`TagType2`/`TagNumber2`/`TagType3`/`TagNumber3`
+    are new fields on measuredFish records, in that order, inserted right
+    after TagStatus/DispositionCode in the Access-shaped export.
 - **Species-specific fields** — FL is always shown; TL and Sex show up per
   species via a three-tier rule worked out with Chris over a few rounds
   (2026-09/10; full reasoning and exact logic in
@@ -213,6 +271,13 @@ device started from an existing one.
   FL-only — so nothing is left to an implicit/ambiguous "not listed"
   fallback. Switching to a species that hides TL clears whatever was typed
   there too, so a value can't silently ride along unnoticed.
+
+  **Manual override (2026-09-30, per Chris):** Sheepshead (species 7) gets
+  TL even though tier 2's historical usage rate came in below threshold — a
+  deliberate prescriptive choice, not data-driven. Tracked in
+  `MANUAL_TL_OVERRIDES` in `tools/regenerate_species_fields.py` (applied
+  after the normal 3-tier computation) so a future regen doesn't silently
+  drop it.
 
   **SL is excluded from this system entirely**, not just deprioritized —
   see "Neither SL nor Weight show by default" above; both are behind the
@@ -322,15 +387,48 @@ device started from an existing one.
     active system — typing something off that list gets a warning. If no
     list has been imported yet for a given month, entry falls back to the
     full master list rather than blocking anyone. See "CSV format" below.
-  All edits here (crew, stations, and each month's assignment import) are
-  stored on-device and travel to other devices the same way field data
-  does — via **Backup (JSON)** / **Restore Backup**.
+  - **Tag Types** (added 2026-09-30) — the physical tag type options (Dart,
+    Internal PIT, etc.) for TagType1/2/3 in the Measured Fish "Tagged/Recaps"
+    popup. A brand-new table, unlike everything else here — starts empty,
+    populate it with real tag-type names before that popup's Tag Type
+    dropdowns are useful. Same add/rename/remove pattern as Crew/Gear/Activity.
+  All edits here (crew, stations, tag types, and each month's assignment
+  import) are stored on-device and travel to other devices the same way
+  field data does — via **Backup (JSON)** / **Restore Backup**.
+
+  **Bug found and fixed alongside this (2026-09-30):** every edit here used
+  to rebuild *every* dropdown app-wide (`populateStaticDropdowns()`), not
+  just the one lookup actually being edited — and rebuilding a `<select>`'s
+  options via `innerHTML` resets its value to blank. Since Settings is
+  reachable without leaving an open collection, adding so much as one Crew
+  member while a collection sat open in the background silently wiped that
+  collection's Gear/Activity/Sound System/etc. back to blank the next time
+  it saved — a real, quiet data-loss risk, not hypothetical (caught while
+  testing the new Tag Types table). `fillSelect()` now preserves each
+  dropdown's previous value across a rebuild, falling back to blank only if
+  that exact value no longer exists among the new options.
 - **Export CSVs for Access** — writes `RFCollection`, `RFMeasuredFish`,
-  `RFSacrificedFish`, `RFTaggedFish` as four CSVs with the *same column names
-  and order* as the source tables, so your regional intermediate database can
-  import them the same way it already imports from the field .mdb (File >
-  Get External Data > Import in Access). This is the "thumb drive" step —
-  copy the CSVs from your Downloads folder to the thumb drive same as today.
+  `RFSacrificedFish`, `RFTaggedFish` as ONE `.xlsx` workbook with a sheet tab
+  per table (changed 2026-09-30, per Chris — previously four separate CSV
+  downloads), same column names/order as the source tables, so your regional
+  intermediate database can import it the same way it already imports from
+  the field .mdb (File > Get External Data > Import in Access — Access reads
+  a specific sheet from a workbook the same as it reads a CSV). This is the
+  "thumb drive" step — copy the file from your Downloads folder to the thumb
+  drive same as today. Built with the already-vendored SheetJS library
+  (`js/vendor/xlsx.core.min.js`), no new dependency.
+
+  **Clear all data after exporting (added 2026-09-30, per Chris).**
+  Immediately after a successful export, two confirms in sequence offer to
+  wipe the device clean for the next month: "Clear all collection and fish
+  data from the app now?", then "Are you sure? This will delete all data
+  for this month. This cannot be undone." Saying **No** to *either* one
+  leaves every record exactly as it was — exporting is always safe to do
+  "just in case" without risking what's still in the app. Saying **Yes**
+  to both clears all 4 field-data stores (collections/measured/sacrificed/
+  tagged — not just collections, since a collection's fish would otherwise
+  be orphaned) plus the current calendar month's imported Monthly Station
+  Assignment list, since that's month-scoped data too.
 - **Backup (JSON)** / **Restore Backup** — a full-fidelity dump/restore of
   everything in the app's local storage, independent of the Access-shaped
   CSVs above. Use this to move data to a new/replacement device, or as a

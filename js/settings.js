@@ -5,19 +5,25 @@
 // Lookup tables that can be edited in-app. Each edit overwrites the
 // in-memory LOOKUPS[key] array AND persists it to IndexedDB so it survives
 // reloads and travels to other devices via Backup (JSON) / Restore Backup.
-const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsSTA'];
+const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsSTA', 'physicalTagType'];
 const STATION_LOOKUP_KEYS = { WAS: 'stationsWAS', ALT: 'stationsALT', STA: 'stationsSTA' };
 
 // Simple code/name lookup tables editable via a shared table+form pattern
-// (Crew, Gear, Activity all have the same shape). codeIsNumeric matters:
-// Gear/Activity codes are compared elsewhere with === against numbers
-// (e.g. LOOKUPS.gear.find(g => g.code === someNumber)), so a code typed
-// into the Add form has to be parsed as a number for those two, unlike
-// Crew's alphanumeric codes.
+// (Crew, Gear, Activity, physicalTagType all have the same shape).
+// codeIsNumeric matters: Gear/Activity/physicalTagType codes are compared
+// elsewhere with === against numbers (e.g. LOOKUPS.gear.find(g => g.code
+// === someNumber)), so a code typed into the Add form has to be parsed as a
+// number for those, unlike Crew's alphanumeric codes.
 const SIMPLE_LOOKUPS = {
   crew: { tbody: 'crewTbody', codeInput: 'crewCode', nameInput: 'crewName', codeIsNumeric: false, label: 'crew member' },
   gear: { tbody: 'gearTbody', codeInput: 'gearCode', nameInput: 'gearName', codeIsNumeric: true, label: 'gear type' },
   activity: { tbody: 'activityTbody', codeInput: 'activityCode', nameInput: 'activityName', codeIsNumeric: true, label: 'activity' },
+  // Physical tag type (e.g. Dart, Internal PIT, T-Bar) for TagType1/2/3 in
+  // the Measured Fish "Tagged/Recaps" popup (per Chris, 2026-09-30) — a
+  // brand-new table, unlike TagStatus/Disposition which reuse existing
+  // fixed lookups (LTagType / LDisposition) ported from the original .mdb.
+  // Starts empty; Chris populates real tag-type names here himself.
+  physicalTagType: { tbody: 'tagTypeTbody', codeInput: 'tagTypeCode', nameInput: 'tagTypeName', codeIsNumeric: true, label: 'tag type' },
 };
 
 async function hydrateLookupOverrides() {
@@ -40,11 +46,13 @@ function showSettingsTab(name) {
   $('settingsPanelActivity').hidden = name !== 'activity';
   $('settingsPanelStations').hidden = name !== 'stations';
   $('settingsPanelAssignments').hidden = name !== 'assignments';
+  $('settingsPanelTagTypes').hidden = name !== 'tagTypes';
   if (name === 'crew') renderSimpleLookupTable('crew');
   if (name === 'gear') renderSimpleLookupTable('gear');
   if (name === 'activity') renderSimpleLookupTable('activity');
   if (name === 'stations') renderStationsTable();
   if (name === 'assignments') renderAssignmentsList();
+  if (name === 'tagTypes') renderSimpleLookupTable('physicalTagType');
 }
 
 // ---------- Crew / Gear / Activity (shared simple code+name editor) ----------

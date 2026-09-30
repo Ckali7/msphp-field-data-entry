@@ -80,12 +80,26 @@ function toast(msg, isWarning) {
   toast._t = setTimeout(() => { el.hidden = true; }, isWarning ? 5000 : 2200);
 }
 
+// Bug found/fixed 2026-09-30 while testing the new Tag Types settings table:
+// populateStaticDropdowns() rebuilds EVERY dropdown app-wide (not just the
+// one lookup actually being edited), and every Settings edit that adds a
+// Crew/Gear/Activity/Tag Type entry calls it — including while a collection
+// is sitting open in the background (Settings is reachable without leaving
+// one). Rebuilding a <select>'s options via innerHTML resets its value to
+// blank, so without this, e.g. editing Crew while a collection is open
+// silently wiped that collection's Gear/Activity/Sound System/etc. back to
+// blank the next time it saved — a real, quiet data-loss risk, not
+// hypothetical. Preserving the previous value (silently falling back to
+// blank only if that exact value no longer exists among the new options)
+// fixes it for every caller at once.
 function fillSelect(select, options, { valueKey = 'code', labelKey = 'name', blank = true } = {}) {
+  const previousValue = select.value;
   select.innerHTML = '';
   if (blank) select.appendChild(new Option('', ''));
   for (const opt of options) {
     select.appendChild(new Option(`${opt[labelKey]} (${opt[valueKey]})`, opt[valueKey]));
   }
+  if (previousValue) select.value = previousValue;
 }
 
 function numOrNull(v) {
@@ -117,6 +131,16 @@ function populateStaticDropdowns() {
   fillSelect($('sf_GonadStage'), LOOKUPS.gonadStage, { blank: true });
   fillSelect($('tf_TagType'), LOOKUPS.tagType, { blank: true });
   fillSelect($('tf_DispositionCode'), LOOKUPS.disposition, { blank: true });
+
+  // Tagged/Recaps popup (Measured Fish) — TagStatus/Disposition reuse the
+  // same fixed lookups as the Tagged Fish tab above; TagType1/2/3 pull from
+  // the new physicalTagType table instead (Settings > Table Data > Tag
+  // Types), a different concept from TagStatus (see that table's note).
+  fillSelect($('mfTag_TagStatus'), LOOKUPS.tagType, { blank: true });
+  fillSelect($('mfTag_Disposition'), LOOKUPS.disposition, { blank: true });
+  fillSelect($('mfTag_TagType1'), LOOKUPS.physicalTagType, { blank: true });
+  fillSelect($('mfTag_TagType2'), LOOKUPS.physicalTagType, { blank: true });
+  fillSelect($('mfTag_TagType3'), LOOKUPS.physicalTagType, { blank: true });
 
   // Sorted alphabetically by common name (the source data is in SpeciesCode
   // order) purely so a 151-entry dropdown is easier to scan/jump through —
@@ -367,6 +391,13 @@ function updateSubsampleIndicator() {
   const btn = $('btnSubsampleIndicator');
   btn.textContent = `Subsample: ${on ? 'ON' : 'OFF'}`;
   btn.classList.toggle('subsampleOn', on);
+  // Taken only ever meant anything as a subsample flag in the original app
+  // (FishTaken was only ever set by the subsample "TAKE THIS FISH" logic,
+  // never a standalone manual checkbox) — per Chris, 2026-09-30, hide it
+  // entirely when subsample is off rather than leave a checkbox with no
+  // real meaning sitting in the row.
+  $('mf_Taken_field').hidden = !on;
+  if (!on) $('mf_FishTaken').checked = false;
 }
 
 function askSubsampleChoice() {
@@ -769,6 +800,28 @@ async function deleteCurrentCollection() {
   showView('list');
 }
 
+// Offered right after a successful "Export CSVs for Access" (per Chris,
+// 2026-09-30) — data is normally offloaded monthly, so once it's out, the
+// device is ready to start fresh for the next month. Two confirms on
+// purpose (this is a full wipe, not scoped to any one collection): the
+// first is a real yes/no, the second is the "this cannot be undone" gut
+// check — saying no to EITHER leaves every record exactly as it was, so
+// exporting is always safe to do "just in case" without risking the data
+// that's still in the app. Clears all 4 field-data stores (a collection's
+// measured/sacrificed/tagged fish would otherwise be orphaned if only
+// collections were wiped) plus this calendar month's imported Monthly
+// Station Assignment list, since that's month-scoped data too.
+async function offerClearAllDataAfterExport() {
+  if (!confirm('Data exported. Clear all collection and fish data from the app now?\n\n(Choose No to leave everything as-is — e.g. to keep it around as a safety copy.)')) return;
+  if (!confirm('Are you sure? This will delete all data for this month. This cannot be undone.')) return;
+  for (const store of ['collections', 'measuredFish', 'sacrificedFish', 'taggedFish']) await DB.clear(store);
+  await DB.delete('stationAssignments', new Date().toISOString().slice(0, 7));
+  currentCollectionNumber = null;
+  await DB.setMeta('lastOpenCollection', null);
+  showView('list');
+  toast('All collection and fish data cleared.');
+}
+
 // ---------- Station / SoundSystem auto-fill ----------
 
 async function onStationChanged() {
@@ -819,7 +872,9 @@ async function onStationChanged() {
 // can't bleed into a different one. Cleared the moment the real Add
 // succeeds, so a restored draft never re-appears after its fish is in.
 const ENTRY_ROW_DRAFT_FIELDS = {
-  measured: ['mf_SpeciesCode', 'mf_FL', 'mf_TL', 'mf_SL', 'mf_SexCode', 'mf_TotalWeight', 'mf_Comments'],
+  measured: ['mf_SpeciesCode', 'mf_FL', 'mf_TL', 'mf_SL', 'mf_SexCode', 'mf_TotalWeight', 'mf_Comments',
+    'mfTag_TagStatus', 'mfTag_Disposition', 'mfTag_TagType1', 'mfTag_TagNumber1',
+    'mfTag_TagType2', 'mfTag_TagNumber2', 'mfTag_TagType3', 'mfTag_TagNumber3'],
   sacrificed: ['sf_SampleNumber', 'sf_SpeciesCode', 'sf_TL', 'sf_FL', 'sf_SL', 'sf_TotalWeight', 'sf_SexCode', 'sf_GonadStage', 'sf_GonadWeight', 'sf_Comments'],
   tagged: ['tf_TagNumber', 'tf_TagNumber2', 'tf_PrimaryID', 'tf_SpeciesCode', 'tf_TagType', 'tf_DispositionCode', 'tf_TL', 'tf_FL', 'tf_SL', 'tf_Comments'],
 };
@@ -1074,6 +1129,97 @@ function renderMeasuredGroups(rows) {
   });
 }
 
+// ---------- Measured Fish: Add Counts (unmeasured-but-counted fish) ----------
+// Ported from the legacy Access "RFMeasuredFishAdd" form (per Chris,
+// 2026-09-30) — a simple, low-key way to fold fish that were seen/caught
+// but never individually measured into each species' running total, done
+// once at the end of the data-entry stream for a collection. Mirrors the
+// original's Current/Add/=/Final Count layout and its two-step commit:
+// "=" only recomputes in memory (never touches saved records), and only
+// "Update Counts" actually writes to the real measuredFish rows, behind the
+// same "cannot be undone" confirm the original used. Species in doNotAdd
+// are excluded, same as the existing Total Count editor in the summary
+// table above.
+let addCountsState = []; // [{ code, current }] -- current is what Update Counts will write
+
+async function openAddCountsModal() {
+  if (!currentCollectionNumber) return;
+  const rows = await DB.getAllByIndex('measuredFish', 'byCollection', currentCollectionNumber);
+  const seen = new Map();
+  for (const r of rows) {
+    if (LOOKUPS.doNotAdd.includes(r.SpeciesCode)) continue;
+    if (!seen.has(r.SpeciesCode)) seen.set(r.SpeciesCode, r.TotalCount ?? 0);
+  }
+  if (seen.size === 0) {
+    toast('No measured species yet in this collection to add counts to.', true);
+    return;
+  }
+  addCountsState = [...seen.entries()].map(([code, current]) => ({ code, current }));
+  renderAddCountsModal();
+  $('addCountsModal').hidden = false;
+}
+
+function renderAddCountsModal() {
+  $('addCountsTbody').innerHTML = addCountsState.map((row, i) => {
+    const sp = LOOKUPS.species.find((s) => s.code === row.code);
+    return `
+      <tr data-idx="${i}">
+        <td>${sp ? sp.common : row.code}</td>
+        <td class="mono addCountsCurrent">${row.current}</td>
+        <td><input type="number" class="addCountInput" data-idx="${i}" /></td>
+        <td><button type="button" class="smallBtn addCountEquals" data-idx="${i}">=</button></td>
+        <td class="mono bold addCountsFinal">${row.current}</td>
+      </tr>`;
+  }).join('');
+
+  $('addCountsTbody').querySelectorAll('.addCountEquals').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.idx);
+      const tr = btn.closest('tr');
+      const inp = tr.querySelector('.addCountInput');
+      const addVal = numOrNull(inp.value);
+      if (addVal == null) return;
+      addCountsState[i].current += addVal;
+      inp.value = '';
+      tr.querySelector('.addCountsCurrent').textContent = addCountsState[i].current;
+      tr.querySelector('.addCountsFinal').textContent = addCountsState[i].current;
+    });
+  });
+}
+
+function closeAddCountsModal() {
+  $('addCountsModal').hidden = true;
+}
+
+async function commitAddCounts() {
+  if (!confirm('Count updates cannot be undone. Are you ready to proceed?')) return;
+  const rows = await DB.getAllByIndex('measuredFish', 'byCollection', currentCollectionNumber);
+  for (const state of addCountsState) {
+    for (const r of rows.filter((x) => x.SpeciesCode === state.code)) {
+      r.TotalCount = state.current;
+      await DB.put('measuredFish', r);
+    }
+  }
+  closeAddCountsModal();
+  await refreshMeasured();
+  toast('Counts updated.');
+}
+
+// ---------- Measured Fish: Tagged/Recaps popup ----------
+// A small overlay (per Chris, 2026-09-30) for tag/recapture info on the fish
+// currently being entered in the main Measured Fish row above — TagStatus,
+// Disposition, and up to 3 tag type/number pairs. Its own Add Fish button
+// just calls addMeasuredFish() (the same function the main Add Fish button
+// and Enter both already use), which reads these fields directly — nothing
+// special about how the fish gets saved, only which fields are populated.
+function openTaggedRecapsModal() {
+  $('taggedRecapsModal').hidden = false;
+}
+
+function closeTaggedRecapsModal() {
+  $('taggedRecapsModal').hidden = true;
+}
+
 async function addMeasuredFish() {
   if (!currentCollectionNumber) { toast('Set the Activity and Date on the Collection tab first.', true); return; }
   if (!collectionMetadataComplete(readCollectionForm())) {
@@ -1086,8 +1232,20 @@ async function addMeasuredFish() {
   const TL = numOrNull($('mf_TL').value);
   const FL = numOrNull($('mf_FL').value);
   const SL = numOrNull($('mf_SL').value);
-  if (TL == null && FL == null && SL == null) {
-    toast('At least one length (TL, FL, or SL) is required — no blank rows.', true);
+  // FL is required for every species; TL is ALSO required whenever this
+  // species shows it (per Chris, 2026-09-30) — not just "any one length",
+  // so a TL-bearing species can no longer slip through on FL alone (or vice
+  // versa). Applies identically whether Add Fish is clicked or Enter is
+  // pressed, since Enter already just calls this same function (see its
+  // keydown handler below). SL stays optional regardless — it's the rare,
+  // manually-revealed field, never part of this species-required set.
+  const requiresTL = ((SPECIES_EXTRA_FIELDS[speciesCode] || MEASURED_SPECIES_DEFAULT_FIELDS)).includes('TL');
+  if (FL == null) {
+    toast('FL is required.', true);
+    return;
+  }
+  if (requiresTL && TL == null) {
+    toast('TL is also required for this species.', true);
     return;
   }
 
@@ -1110,8 +1268,19 @@ async function addMeasuredFish() {
   const record = {
     CollectionNumber: currentCollectionNumber,
     SpeciesCode: speciesCode,
-    TagType: null,
-    DispositionCode: null,
+    // TagStatus (renamed from the original TagType, per Chris 2026-09-30 —
+    // the real lookup behind it, LTagType, is a Not Tagged/Tagged/Recaptured
+    // status, not a tag type) and the 6 Tagged/Recaps fields below all come
+    // from the "Tagged/Recaps" popup (#taggedRecapsModal), optional and
+    // blank unless that popup was actually used for this fish.
+    TagStatus: numOrNull($('mfTag_TagStatus').value),
+    DispositionCode: numOrNull($('mfTag_Disposition').value),
+    TagType1: numOrNull($('mfTag_TagType1').value),
+    TagNumber1: $('mfTag_TagNumber1').value || null,
+    TagType2: numOrNull($('mfTag_TagType2').value),
+    TagNumber2: $('mfTag_TagNumber2').value || null,
+    TagType3: numOrNull($('mfTag_TagType3').value),
+    TagNumber3: $('mfTag_TagNumber3').value || null,
     TL, FL, SL, TotalWeight,
     SexCode: numOrNull($('mf_SexCode').value),
     TotalCount: 1,
@@ -1135,6 +1304,12 @@ async function addMeasuredFish() {
 
   for (const id of ['mf_TL','mf_FL','mf_SL','mf_TotalWeight','mf_Comments']) $(id).value = '';
   $('mf_FishTaken').checked = false;
+  // Tagged/Recaps fields never carry over to the next fish, whether or not
+  // the popup was actually opened for this one (per Chris, 2026-09-30) —
+  // closing it here too is a no-op if it was never shown.
+  for (const id of ['mfTag_TagStatus','mfTag_Disposition','mfTag_TagType1','mfTag_TagNumber1',
+    'mfTag_TagType2','mfTag_TagNumber2','mfTag_TagType3','mfTag_TagNumber3']) $(id).value = '';
+  closeTaggedRecapsModal();
   // Species is left as-is (not cleared) for rapid same-species entry, so per
   // Chris (2026-09) focus goes straight to FL rather than back to Species —
   // select species once, then it's length -> Enter -> length -> Enter... for
@@ -1377,6 +1552,7 @@ const CODE_ENTRY_SELECT_IDS = [
   'mf_SpeciesCode', 'mf_SexCode',
   'sf_SpeciesCode', 'sf_SexCode', 'sf_GonadStage',
   'tf_SpeciesCode', 'tf_TagType', 'tf_DispositionCode',
+  'mfTag_TagStatus', 'mfTag_Disposition', 'mfTag_TagType1', 'mfTag_TagType2', 'mfTag_TagType3',
 ];
 
 // Matches typed digits against option VALUES (the actual codes), not the
@@ -1563,6 +1739,7 @@ function wireEvents() {
   $('btnAddCrew').addEventListener('click', () => addSimpleLookupEntry('crew'));
   $('btnAddGear').addEventListener('click', () => addSimpleLookupEntry('gear'));
   $('btnAddActivity').addEventListener('click', () => addSimpleLookupEntry('activity'));
+  $('btnAddTagType').addEventListener('click', () => addSimpleLookupEntry('physicalTagType'));
   document.querySelectorAll('#settingsStationSystemToggle .toggleBtn').forEach((b) => {
     b.addEventListener('click', () => {
       settingsStationSystem = b.dataset.system;
@@ -1696,9 +1873,18 @@ function wireEvents() {
   $('btnAddSacrificed').addEventListener('click', addSacrificedFish);
   $('btnAddTagged').addEventListener('click', addTaggedFish);
 
+  $('btnAddCounts').addEventListener('click', openAddCountsModal);
+  $('btnAddCountsUpdate').addEventListener('click', commitAddCounts);
+  $('btnAddCountsExit').addEventListener('click', closeAddCountsModal);
+
+  $('btnTaggedRecaps').addEventListener('click', openTaggedRecapsModal);
+  $('btnTaggedRecapsClose').addEventListener('click', closeTaggedRecapsModal);
+  $('btnTaggedRecapsAdd').addEventListener('click', addMeasuredFish);
+
   $('btnExportAccess').addEventListener('click', async () => {
     const counts = await exportForAccess();
     toast(`Exported: ${counts.collections} collections, ${counts.measuredFish} measured, ${counts.sacrificedFish} sacrificed, ${counts.taggedFish} tagged.`);
+    await offerClearAllDataAfterExport();
   });
   // Catches the "lid closed / app backgrounded mid-field" case: the page
   // visibility API fires reliably when a laptop sleeps or a tab is

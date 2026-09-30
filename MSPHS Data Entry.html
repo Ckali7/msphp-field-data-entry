@@ -187,6 +187,7 @@
       <div class="toolbar">
         <button type="button" id="btnSubsampleIndicator" class="smallBtn subsampleIndicator">Subsample: OFF</button>
         <input type="checkbox" id="f_SubSampleTool" hidden />
+        <button type="button" id="btnAddCounts" class="smallBtn">Add Counts</button>
       </div>
       <div id="measuredGateBanner" class="gateBanner" hidden></div>
       <div class="entryRow" id="measuredEntryRow">
@@ -200,12 +201,63 @@
         <div class="field small" id="mf_Sex_field"><label>Sex</label><select id="mf_SexCode"></select></div>
         <div class="field small" id="mf_TotalWeight_field" hidden><label>Wt (g)</label><input id="mf_TotalWeight" type="number" step="0.1" /></div>
         <button type="button" id="btnToggleRareFields" class="smallBtn">+ SL / Wt</button>
-        <div class="field checkFieldInline"><label><input type="checkbox" id="mf_FishTaken" /> Taken</label></div>
+        <div class="field checkFieldInline" id="mf_Taken_field"><label><input type="checkbox" id="mf_FishTaken" /> Taken</label></div>
+        <button type="button" id="btnTaggedRecaps" class="smallBtn">Tagged/Recaps</button>
         <button id="btnAddMeasured" class="bigBtn primary">Add Fish</button>
         <div class="field wide"><label>Comments</label><input id="mf_Comments" type="text" /></div>
       </div>
       <div id="measuredWarnings" class="warningBox" hidden></div>
       <div id="measuredGroups"></div>
+    </div>
+
+    <!-- ---- Tagged/Recaps popup (Measured Fish) ---- -->
+    <div class="modalOverlay" id="taggedRecapsModal" hidden>
+      <div class="modalBox">
+        <div class="modalHeaderRow">
+          <h3>Tagged/Recaps</h3>
+          <button type="button" id="btnTaggedRecapsClose" class="smallBtn" aria-label="Close">&times;</button>
+        </div>
+        <p class="settingsNote">Tag/recapture details for the fish currently being entered on the
+          Measured Fish tab (Species/FL/TL/etc. above) — Add Fish below saves that fish with this
+          info attached and returns you to the main Measured Fish area.</p>
+        <div class="entryRow">
+          <div class="field"><label>Tag Status</label><select id="mfTag_TagStatus"></select></div>
+          <div class="field"><label>Disposition</label><select id="mfTag_Disposition"></select></div>
+        </div>
+        <div class="entryRow">
+          <div class="field"><label>Tag Type 1</label><select id="mfTag_TagType1"></select></div>
+          <div class="field"><label>Tag Number 1</label><input id="mfTag_TagNumber1" type="text" /></div>
+        </div>
+        <div class="entryRow">
+          <div class="field"><label>Tag Type 2</label><select id="mfTag_TagType2"></select></div>
+          <div class="field"><label>Tag Number 2</label><input id="mfTag_TagNumber2" type="text" /></div>
+        </div>
+        <div class="entryRow">
+          <div class="field"><label>Tag Type 3</label><select id="mfTag_TagType3"></select></div>
+          <div class="field"><label>Tag Number 3</label><input id="mfTag_TagNumber3" type="text" /></div>
+        </div>
+        <div class="modalFooter" style="justify-content:flex-end">
+          <button type="button" id="btnTaggedRecapsAdd" class="bigBtn primary">Add Fish</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Add Counts popup (Measured Fish) ---- -->
+    <div class="modalOverlay" id="addCountsModal" hidden>
+      <div class="modalBox">
+        <h3>Add Counts</h3>
+        <p class="settingsNote">For fish seen/caught but not individually measured — add to
+          each species' running total. Press "=" to fold Add into Current for that row.
+          Nothing is saved until you click Update Counts.</p>
+        <table class="dataTable">
+          <thead><tr><th>Species</th><th>Current</th><th>Add</th><th></th><th>Final Count</th></tr></thead>
+          <tbody id="addCountsTbody"></tbody>
+        </table>
+        <div class="modalFooter">
+          <button type="button" id="btnAddCountsUpdate" class="bigBtn primary">Update Counts</button>
+          <button type="button" id="btnAddCountsExit" class="bigBtn">Exit (no changes)</button>
+        </div>
+      </div>
     </div>
 
     <!-- ---- TAB: Sacrificed Fish ---- -->
@@ -311,6 +363,7 @@
       <button class="tabBtn" data-settings-tab="activity">Activity</button>
       <button class="tabBtn" data-settings-tab="stations">Stations</button>
       <button class="tabBtn" data-settings-tab="assignments">Monthly Station Assignments</button>
+      <button class="tabBtn" data-settings-tab="tagTypes">Tag Types</button>
     </nav>
 
     <!-- ---- Crew ---- -->
@@ -400,6 +453,22 @@
       </div>
       <div id="assignImportSummary" class="warningBox" hidden></div>
       <div id="assignmentsList"></div>
+    </div>
+
+    <!-- ---- Tag Types ---- -->
+    <div class="tabPanel" id="settingsPanelTagTypes" hidden>
+      <p class="settingsNote">The physical tag type options for TagType1/TagType2/TagType3 in the
+        Measured Fish "Tagged/Recaps" popup (e.g. Dart, Internal PIT, T-Bar) — a different list from
+        TagStatus, which is a fixed Not Tagged/Tagged/Recaptured status, not editable here.</p>
+      <div class="entryRow">
+        <div class="field small"><label>Code</label><input id="tagTypeCode" type="number" /></div>
+        <div class="field wide"><label>Name</label><input id="tagTypeName" type="text" /></div>
+        <button id="btnAddTagType" class="bigBtn primary">Add Tag Type</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr><th>Code</th><th>Name</th><th></th></tr></thead>
+        <tbody id="tagTypeTbody"></tbody>
+      </table>
     </div>
 
   </section>

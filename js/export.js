@@ -3,21 +3,6 @@
 // point as pulling data off the Toughbook today, just swapping "thumb drive"
 // for "Downloads folder you copy to a thumb drive."
 
-function csvEscape(v) {
-  if (v == null) return '';
-  const s = v instanceof Date ? v.toISOString() : String(v);
-  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
-}
-
-function toCSV(columns, rows) {
-  const lines = [columns.join(',')];
-  for (const row of rows) {
-    lines.push(columns.map((c) => csvEscape(row[c])).join(','));
-  }
-  return lines.join('\r\n');
-}
-
 function downloadFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime || 'text/plain' });
   const url = URL.createObjectURL(blob);
@@ -30,10 +15,6 @@ function downloadFile(filename, content, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 const EXPORT_COLUMNS = {
   RFCollection: [
     'CollectionNumber', 'ActivityCode', 'Date', 'Time', 'Time2', 'Latitude', 'Longitude',
@@ -42,8 +23,15 @@ const EXPORT_COLUMNS = {
     'Depth', 'Comments', 'VesselOp', 'DataRec', 'FishMeas', 'Proofed', 'Latitude2',
     'Longitude2', 'DirTide', 'VesselSOG', 'DataSent',
   ],
+  // TagType renamed to TagStatus (2026-09-30, per Chris) -- the underlying
+  // value is unchanged (LTagType: Not Tagged/Tagged/Recaptured), just a
+  // clearer name now that TagType1/2/3 exist as a genuinely different
+  // concept (physical tag type) right next to it. Order below matches what
+  // Chris specified: TagStatus, Disposition, then TagType1/TagNumber1,
+  // TagType2/TagNumber2, TagType3/TagNumber3 as pairs.
   RFMeasuredFish: [
-    'RecordNumber', 'CollectionNumber', 'SpeciesCode', 'TagType', 'DispositionCode', 'TL',
+    'RecordNumber', 'CollectionNumber', 'SpeciesCode', 'TagStatus', 'DispositionCode',
+    'TagType1', 'TagNumber1', 'TagType2', 'TagNumber2', 'TagType3', 'TagNumber3', 'TL',
     'FL', 'SL', 'TotalWeight', 'SexCode', 'TotalCount', 'FishTaken', 'Comments', 'ModalGroup',
     'FishMeas',
   ],
@@ -59,8 +47,11 @@ const EXPORT_COLUMNS = {
 };
 
 // Produces the 4 tables your regional intermediate DB already knows how to
-// import (File > Get External Data > Import in Access, same as always) —
-// same table names, same column names/order as the field .mdb.
+// import, as ONE workbook with a sheet tab per table (per Chris, 2026-09-30
+// — previously 4 separate CSV downloads, spaced 400ms apart since browsers
+// silently throttle several rapid-fire downloads in the same tick; a single
+// file sidesteps that entirely). Same table names, same column names/order
+// as the field .mdb, now as sheet tab names instead of filenames.
 async function exportForAccess() {
   const [collections, measuredFish, sacrificedFish, taggedFish] = await Promise.all([
     DB.getAll('collections'),
@@ -69,18 +60,17 @@ async function exportForAccess() {
     DB.getAll('taggedFish'),
   ]);
 
-  // Downloads are spaced out on purpose: browsers silently block/throttle
-  // several automatic downloads fired back-to-back in the same tick (looks
-  // like download spam to them), which was dropping everything after the
-  // first CSV. A short gap between each keeps all 4 landing reliably.
+  const wb = XLSX.utils.book_new();
+  const sheet = (name, columns, rows) => {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows, { header: columns }), name);
+  };
+  sheet('RFCollection', EXPORT_COLUMNS.RFCollection, collections);
+  sheet('RFMeasuredFish', EXPORT_COLUMNS.RFMeasuredFish, measuredFish);
+  sheet('RFSacrificedFish', EXPORT_COLUMNS.RFSacrificedFish, sacrificedFish);
+  sheet('RFTaggedFish', EXPORT_COLUMNS.RFTaggedFish, taggedFish);
+
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadFile(`RFCollection_${stamp}.csv`, toCSV(EXPORT_COLUMNS.RFCollection, collections), 'text/csv');
-  await delay(400);
-  downloadFile(`RFMeasuredFish_${stamp}.csv`, toCSV(EXPORT_COLUMNS.RFMeasuredFish, measuredFish), 'text/csv');
-  await delay(400);
-  downloadFile(`RFSacrificedFish_${stamp}.csv`, toCSV(EXPORT_COLUMNS.RFSacrificedFish, sacrificedFish), 'text/csv');
-  await delay(400);
-  downloadFile(`RFTaggedFish_${stamp}.csv`, toCSV(EXPORT_COLUMNS.RFTaggedFish, taggedFish), 'text/csv');
+  XLSX.writeFile(wb, `MSPHP_Export_${stamp}.xlsx`);
 
   return {
     collections: collections.length,

@@ -29,6 +29,47 @@
    one rule is the single source of truth. */
 [hidden] { display: none !important; }
 
+/* Shared small-popup pattern (2026-09-30, per Chris) — used by Add Counts
+   (Measured Fish) and Tagged/Recaps. This app otherwise relies entirely on
+   native confirm()/alert() for prompts; these two features specifically
+   need a real table/form, which native dialogs can't provide, so this is
+   the one place a custom overlay exists. Shown/hidden via el.hidden like
+   everything else (see the [hidden] rule above) — .modalOverlay's own
+   display:flex only ever applies once [hidden] is gone. */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 1rem;
+}
+.modalBox {
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  padding: 1rem 1.1rem;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35);
+}
+.modalBox h3 { margin: 0 0 0.3rem; }
+.modalBox .settingsNote { margin-top: 0; }
+.modalHeaderRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.6rem; }
+.modalHeaderRow h3 { flex: 1; }
+.modalHeaderRow .smallBtn { min-height: 34px; min-width: 34px; padding: 0 0.5rem; font-size: 1.1rem; line-height: 1; }
+.modalFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
 html, body {
   margin: 0;
   padding: 0;

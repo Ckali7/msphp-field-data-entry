@@ -9,6 +9,12 @@
 // neither of the above applies. See tools/regenerate_species_fields.py
 // for the full rule and reasoning. SL and Weight are handled separately
 // (a manual reveal button, not species-driven) — never in this file.
+//
+// MANUAL OVERRIDE (2026-09-30, per Chris): species 7 (Sheepshead) gets TL
+// even though tier 2 (historical usage) found it below threshold — a
+// deliberate prescriptive choice, not data-driven, so a future regen from
+// regenerate_species_fields.py would silently drop it unless that script's
+// MANUAL_TL_OVERRIDES set (added alongside this) is kept in sync.
 const SPECIES_EXTRA_FIELDS = {
  "1": [],
  "2": [
@@ -22,7 +28,9 @@ const SPECIES_EXTRA_FIELDS = {
  "6": [
   "TL"
  ],
- "7": [],
+ "7": [
+  "TL"
+ ],
  "8": [],
  "9": [],
  "10": [

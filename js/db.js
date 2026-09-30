@@ -87,6 +87,16 @@ const DB = {
     return result;
   },
 
+  // Wipes every record in a store (per Chris, 2026-09-30 — the post-export
+  // "clear all data" flow). Distinct from delete() (one key) — this empties
+  // the whole store.
+  async clear(storeName) {
+    const t = await tx(storeName, 'readwrite');
+    const result = await promisifyRequest(t.objectStore(storeName).clear());
+    if (DATA_STORES.includes(storeName)) await DB._markDirty();
+    return result;
+  },
+
   async getAll(storeName) {
     const t = await tx(storeName, 'readonly');
     return promisifyRequest(t.objectStore(storeName).getAll());
