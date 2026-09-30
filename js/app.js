@@ -789,6 +789,11 @@ async function onStationChanged() {
   if (st) {
     if (st.lat != null) $('f_Latitude').value = st.lat;
     if (st.lon != null) $('f_Longitude').value = st.lon;
+    // Location is a free-text field on the collection (unlike lat/lon), so
+    // it's still hand-editable afterward — this only seeds it from the
+    // station's own short description (per Chris, 2026-09-30) the same way
+    // lat/lon are seeded, rather than leaving it blank for every collection.
+    if (st.location != null) $('f_Location').value = st.location;
   }
 
   const assignment = await getActiveAssignment($('f_Date').value);
@@ -1450,8 +1455,86 @@ function enableCodeEntry(select) {
   });
 }
 
+// Touch-friendly counterpart to enableCodeEntry() above (2026-09-30, per
+// Chris): that one only helps when a real keyboard is attached, since typing
+// digits relies on keydown events a phone's native <select> picker wheel
+// never generates. This wraps the select in .codeEntryWrap and overlays an
+// invisible text input over its LEFT portion, leaving the select's own
+// dropdown-arrow strip on the right exposed and untouched (see the CSS
+// comment above .codeEntryWrap for why the split is done that way — browsers
+// don't let scripts force a native <select> open, so the exposed arrow has
+// to stay a genuine, untouched part of the real select). The overlay is
+// pointer-events:none except on phone/tablet (CSS, [data-device-tier]-scoped)
+// so laptop's mouse+keyboard flow above is completely unaffected — clicks
+// pass straight through to the select exactly as they do today.
+function wireTouchCodeEntry(select) {
+  const wrap = document.createElement('div');
+  wrap.className = 'codeEntryWrap';
+  select.parentNode.insertBefore(wrap, select);
+  wrap.appendChild(select);
+  select.classList.add('codeEntrySelect');
+
+  const overlay = document.createElement('input');
+  overlay.type = 'text';
+  overlay.inputMode = 'numeric';
+  overlay.autocomplete = 'off';
+  overlay.className = 'codeEntryOverlay';
+  overlay.tabIndex = -1; // touch-only affordance -- Tab still reaches the real select directly, same as before
+  wrap.appendChild(overlay);
+
+  let buffer = '';
+  function reset() {
+    overlay.value = '';
+    overlay.classList.remove('active');
+    buffer = '';
+  }
+
+  overlay.addEventListener('focus', () => {
+    overlay.classList.add('active');
+    overlay.value = '';
+    buffer = '';
+  });
+
+  // Matches against option VALUES (the real codes), same exact-match
+  // approach as enableCodeEntry() above, applied live as each digit lands.
+  overlay.addEventListener('input', () => {
+    buffer = overlay.value.replace(/[^0-9]/g, '');
+    overlay.value = buffer;
+    const exact = Array.from(select.options).find((o) => o.value === buffer);
+    if (exact) {
+      select.value = buffer;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+
+  overlay.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); overlay.blur(); }
+  });
+
+  // Tapping the arrow strip always reaches the select directly (see CSS) and
+  // is the main way back to the dropdown. This is a fallback for a tap that
+  // lands back in the box instead: while the keypad is already showing, a
+  // second tap there bails out to a normal, immediately-tappable select
+  // rather than trying to force its picker open (which script can't do).
+  overlay.addEventListener('mousedown', (ev) => {
+    if (document.activeElement === overlay) {
+      ev.preventDefault();
+      reset();
+      select.focus();
+    }
+  });
+
+  overlay.addEventListener('blur', () => {
+    if (buffer) {
+      const opt = select.selectedOptions[0];
+      if (opt && opt.value !== '') toast(`Set to: ${opt.textContent}`);
+    }
+    reset();
+  });
+}
+
 function wireEvents() {
-  for (const id of CODE_ENTRY_SELECT_IDS) enableCodeEntry($(id));
+  for (const id of CODE_ENTRY_SELECT_IDS) { enableCodeEntry($(id)); wireTouchCodeEntry($(id)); }
 
   // Backspace/Delete clears whatever's selected — selects don't support this
   // natively (per Chris, 2026-09). Applies to every select, including

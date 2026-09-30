@@ -31,19 +31,69 @@ device started from an existing one.
 - **Station** and **Species** (on all 3 fish tabs) are plain dropdowns, same
   as every other field — not free-text-with-suggestions. Picking a Station
   auto-fills Latitude/Longitude from the real station coordinate tables
-  (WAS/ALT/HAM/CMB, same as the WAS/ALT/HAM/CMB toggle buttons in the
-  original) and infers **Sound System** from the station name prefix, same
-  rule as the original (`ALT#### >= 0116` -> Doboy, else Altamaha; `HAM` ->
-  Hampton River; `WAS` -> Wassaw; `SSI` -> St. Simons; `CMB` -> Cumberland).
-  If a Monthly Station Assignment list is active (see Table Data below), the
-  Station dropdown is restricted to that month's assigned stations for the
-  active system — a station already saved on an existing record stays
-  selectable even if a later assignment import would otherwise exclude it,
-  so reviewing an older collection never silently loses its saved value.
-  Changing Station **always** re-syncs Latitude/Longitude/Sound System to
-  match the newly-picked station (fixed 2026-09 — it used to only fill
-  those fields if they were still blank, so picking a different station
-  after the first one left stale coordinates behind).
+  (WAS/ALT/STA, same as the WAS/ALT/STA toggle buttons — see "Station-system
+  restructuring" below) and infers **Sound System** from the station name
+  prefix, same rule as the original (`ALT#### >= 0116` -> Doboy, else
+  Altamaha; `HAM` -> Hampton River; `WAS` -> Wassaw; `SSI` -> St. Simons)
+  plus a new one for `STA` (St. Andrew Sound vs. Cumberland River, split by
+  latitude — see below). If a Monthly Station Assignment list is active (see
+  Table Data below), the Station dropdown is restricted to that month's
+  assigned stations for the active system — a station already saved on an
+  existing record stays selectable even if a later assignment import would
+  otherwise exclude it, so reviewing an older collection never silently
+  loses its saved value. Changing Station **always** re-syncs
+  Latitude/Longitude/Sound System to match the newly-picked station (fixed
+  2026-09 — it used to only fill those fields if they were still blank, so
+  picking a different station after the first one left stale coordinates
+  behind).
+- **Location auto-fill (added 2026-09-30).** Every WAS/ALT/STA station in
+  the master list now also carries a short human-written location
+  description (e.g. "New Cut, near Wassaw Island N end") sourced from
+  Desktop\Station Location Match\*_with_Descriptions.xlsx. Picking a Station
+  seeds the Collection tab's free-text **Location** field with that
+  description, same "always re-sync on station change" behavior as
+  Latitude/Longitude — but unlike those, Location stays a normal editable
+  text field afterward, so a specific collection can still add detail or
+  override it by hand without affecting the master station list.
+- **Station-system restructuring (2026-09-30, per Chris).** The app now has
+  3 station-system buttons instead of 4:
+  - **HAM merged into ALT.** The live Access `.mdb` tracks Hampton River as
+    its own table/SYSTEM code separate from Altamaha, but that's a
+    database-schema split, not two independent surveys — "Chronology of
+    Adjustments to MSPHP ALTHAM Survey Design.pdf" (`Desktop\MSPHS GLMM
+    Standardization\`) confirms Hampton River and Altamaha were designed and
+    run as **one combined "ALTHAM" program since 2003** (shared quad/pool
+    numbering from day one; e.g. Jan 2004 "effort was reallocated between
+    Hampton and new Altamaha systems" when Doboy Sound stations were added
+    to replace dropped Altamaha ones). HAM was never dropped from the survey
+    — only ordinary individual-station churn over the years, same as ALT
+    had. So merging them in the app (357 stations: 220 ALT + 137 HAM) is
+    arguably a return to how the survey was always conceived, not just a UI
+    simplification. HAM station *names* are unchanged (still `HAM####`) —
+    only which button/list they live under changed. An imported Monthly
+    Station Assignment row still tagged `HAM` (by an explicit System column
+    or inferred from the name) is normalized to `ALT` on import so it still
+    shows as assigned once the ALT system is selected. Sound System
+    inference still returns Hampton River (code 11) for `HAM`-prefixed
+    stations — that biological classification wasn't touched, only the UI
+    grouping.
+  - **CMB retired, replaced by STA.** CMB was always a single
+    never-populated placeholder station (`CMB0001`) — never real data.
+    Chris provided a real 122-station list (`LStationAssignmentSTA_with_
+    Descriptions.xlsx`) covering St. Andrew Sound and the Cumberland River
+    area, which never existed in the `.mdb` at all. That's the new **STA**
+    button. Because it spans two real Sound System entries (St. Andrew =
+    15, Cumberland = 16) the same way ALT already spans two (Altamaha/
+    Doboy), `inferSoundSystemFromStation()` splits STA by each station's
+    real latitude (>= 30.9565 -> St. Andrew, else Cumberland — that cutoff
+    sits in a clean gap between the northernmost Cumberland-named station
+    and the southernmost St. Andrew-named one in the source file) rather
+    than a station-number rule like ALT's, since there's no historical
+    precedent to port for a system this new.
+  - `tools/regenerate_lookups.py` cannot fully reproduce this from the
+    `.mdb` alone (no `LStationCoordinatesSTA` table exists, and the `.mdb`'s
+    own HAM/ALT tables are still separate) — see that script's module
+    docstring for exactly what has to be re-applied by hand after a regen.
 - **Populated field values are legible enough to actually confirm** (per
   Chris, 2026-09). The Station/Sound System/Latitude/Longitude row was
   deliberately built tight (see `.fieldGridCompact` in `css/style.css`) on
@@ -75,7 +125,7 @@ device started from an existing one.
   the original's ActivityCode-based default). Only touches the field while
   it's still holding an auto-set value — a real manual pick sticks, even
   across later Date changes. Other months are left blank for manual choice.
-- **Station System** (WAS/ALT/HAM/CMB) defaults to whichever one was last
+- **Station System** (WAS/ALT/STA) defaults to whichever one was last
   used, for a new collection — not always WAS.
 - **Measured Fish** — species/length/weight tally, with the same live
   cross-checks against `LBioParms` the original had (implausible length for
@@ -227,6 +277,25 @@ device started from an existing one.
   popup). The field is fully usable with one click either way: type a code
   immediately, or click a second time (now that it's focused) to open the
   list and pick with the mouse as usual.
+- **Touch-friendly code entry (added 2026-09-30, per Chris).** The
+  typing-a-code trick above relies on `keydown` events from a real physical
+  keyboard — it does nothing on phone/tablet, where tapping a `<select>`
+  just opens the OS's own picker wheel with no way to type into it at all.
+  On phone/tablet only (laptop is completely unaffected — see below), each
+  of those same fields now has two separate tap zones: tapping the small
+  arrow on the right still opens the real native dropdown list, exactly as
+  before, while tapping anywhere else in the box brings up a real numeric
+  keypad to type the code, which commits back into the field (with the same
+  "Set to: ..." confirmation) on Tab/Enter/tapping away. Tapping the box a
+  second time while the keypad is showing bails back out to a normal,
+  immediately-tappable dropdown — a fallback for a tap that lands in the box
+  again instead of the arrow, since browsers don't let a script force a
+  native dropdown open (only a genuine tap on the field itself can).
+  Mechanically, this overlays an invisible text input on top of the select's
+  left portion (`wireTouchCodeEntry()` in `app.js`, `.codeEntryWrap`/
+  `.codeEntryOverlay`/`.codeEntrySelect` in `css/style.css`) — on laptop that
+  overlay is `pointer-events: none`, so every click passes straight through
+  to the select exactly as it always has; nothing changed there.
 - **Backspace/Delete clears a dropdown** back to blank — same as it would
   in a text field. Applies to every dropdown in the app, not just the
   code-entry ones above.
@@ -245,8 +314,8 @@ device started from an existing one.
   - **Activity** — add/rename/remove activity types (the Activity dropdown,
     and the leading digit(s) of every generated Collection Number).
   - **Stations** — add/edit/remove entries in the master station list (per
-    WAS/ALT/HAM/CMB), the same list that drives the Station field's
-    Lat/Long auto-fill.
+    WAS/ALT/STA), the same list that drives the Station field's
+    Lat/Long/Location auto-fill.
   - **Monthly Station Assignments** — import the month's randomly-generated
     station list (save it as CSV first). Once imported, the Station field
     during entry is restricted to that month's assigned stations for the
@@ -388,8 +457,9 @@ internal `parse_xlscfb is not defined` error) — a real problem for a
 end to end. Either format needs at minimum a **Station** column —
 header matching is case-insensitive and forgiving of common variants
 (`Station`, `Station Name`, `StationID`). Optional columns, if present, are
-read and carried through: `System` (WAS/ALT/HAM/CMB — if missing, inferred
-from the station name's prefix), `Gear`, `Quad`, `Status`, `Latitude`,
+read and carried through: `System` (WAS/ALT/STA — if missing, inferred
+from the station name's prefix; a `HAM` prefix or System value normalizes to
+`ALT`, per the 2026-09-30 station-system restructuring above), `Gear`, `Quad`, `Status`, `Latitude`,
 `Longitude`. You pick the month it applies to at import time (a plain
 month picker), independent of anything in the file itself. Re-importing the
 same month replaces that month's list rather than duplicating it. Rows whose
@@ -407,7 +477,7 @@ tablet) — nothing to set up on any device. A small **Screen Size** control
 at the top of Table Data (Auto / Phone / Tablet / Laptop) exists only for
 the rare case Auto guesses wrong (e.g. unusual Windows display-scaling) —
 picking one pins it on that device and stops it reacting to the window,
-the same deliberate way the WAS/ALT/HAM/CMB station-system toggle works;
+the same deliberate way the WAS/ALT/STA station-system toggle works;
 picking Auto again restores the live behavior. The choice is remembered
 per device (`DB.setMeta('deviceTierOverride', ...)`, same mechanism as
 `lastStationSystem`).
@@ -535,7 +605,7 @@ and at boot in `init()`):
 ## Monthly Station Status (check/balance)
 
 A read-only checklist (per Chris, 2026-09) at the header's **✓ Station Status**
-button — pick a month, sound system (WAS/ALT/HAM/CMB), and gear type, and it
+button — pick a month, sound system (WAS/ALT/STA), and gear type, and it
 lists every station assigned to that combination with a **Done** pill next to
 any that already has a fully complete collection (same `gearCollectionComplete()`
 check used to gate fish entry elsewhere — Lat/Long/Gear plus all three crew

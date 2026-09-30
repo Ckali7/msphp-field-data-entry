@@ -4,10 +4,27 @@ field-entry database (..\\msphp data entry.mdb, i.e. the .mdb one folder up
 from this PWA folder).
 
 Run this again ONLY if the source lookup tables change — new species added to
-LSpecies, a station added/moved in LStationCoordinatesWAS/ALT/HAM/CMB, updated
+LSpecies, a station added/moved in LStationCoordinatesWAS/ALT/HAM, updated
 LBioParms regressions, or a changed MSPHPSubSampleList target. Everyday use of
 the app does NOT need this script; it only touches the read-only reference
 data bundled into the app, never your entered field data.
+
+IMPORTANT (2026-09-30): a raw run of this script will NOT reproduce the
+current shape of js/lookups.js. Two things layered on top of a plain regen,
+neither sourced from this .mdb:
+  1. Every WAS/ALT/STA station's "location" field (a short human-written
+     description) — merged in from Desktop\\Station Location Match\\
+     *_with_Descriptions.xlsx, not present in these tables.
+  2. The 3-system restructuring: LStationCoordinatesHAM's 137 stations are
+     merged into stationsALT (the .mdb still tracks them as a separate table
+     — this script's stations() calls below combine them), LStationCoordinatesCMB
+     (always just one never-populated placeholder) is skipped entirely, and
+     stationsSTA (122 real stations, no .mdb table exists for it at all) has
+     to be rebuilt from LStationAssignmentSTA_with_Descriptions.xlsx.
+If you add real stations to LStationCoordinatesHAM going forward, they'll
+show up correctly (merged into ALT) on the next regen — but a NEW WAS/ALT
+station added this way won't have a "location" value, and nothing here can
+regenerate stationsSTA at all since its source isn't in the .mdb.
 
 Requires: Python 3 with pyodbc installed, and the Microsoft Access Database
 Engine (ACE OLEDB / ODBC) driver, both already present on the machine this
@@ -111,12 +128,20 @@ def main():
     ]
 
     out["stationsWAS"] = stations(cursor, "LStationCoordinatesWAS")
-    out["stationsALT"] = stations(cursor, "LStationCoordinatesALT")
-    out["stationsHAM"] = stations(cursor, "LStationCoordinatesHAM")
-    out["stationsCMB"] = stations(cursor, "LStationCoordinatesCMB")
+    # HAM merged into the ALT button/list (per Chris, 2026-09-30) — the .mdb
+    # itself still keeps them as separate tables, so this combines them here
+    # rather than relying on a change to the source data. LStationCoordinatesCMB
+    # is skipped entirely (always just one never-populated placeholder row).
+    out["stationsALT"] = stations(cursor, "LStationCoordinatesALT") + stations(cursor, "LStationCoordinatesHAM")
+    # stationsSTA has NO source table in this .mdb — it came from
+    # LStationAssignmentSTA_with_Descriptions.xlsx (see module docstring
+    # above) and can't be regenerated from here. A raw run of this script
+    # will silently drop it — re-add it by hand from that source afterward.
 
     js = "// Auto-generated from msphp data entry.mdb lookup tables — do not hand-edit.\n"
     js += "// Regenerate via tools/regenerate_lookups.py if the source Access lookup tables change.\n"
+    js += "// NOTE: this run did not add station[].location descriptions or stationsSTA —\n"
+    js += "// see this script's module docstring for what still needs to be re-applied by hand.\n"
     js += "const LOOKUPS = " + json.dumps(out, indent=1) + ";\n"
 
     OUT_PATH.write_text(js, encoding="utf-8")

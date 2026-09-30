@@ -285,6 +285,63 @@ main { padding: 0.75rem 0.9rem 4rem; }
 .field input.upper { text-transform: uppercase; }
 .field textarea { min-height: 3.2em; resize: vertical; }
 
+/* Touch-friendly numeric code entry (2026-09-30, per Chris): tapping a native
+   <select> on phone/tablet just opens the OS's own picker wheel, with no way
+   to type a code into that — unlike enableCodeEntry() in app.js, which only
+   helps when a real keyboard is attached (laptop). wireTouchCodeEntry() there
+   wraps each code-entry select in .codeEntryWrap and overlays this invisible
+   text input on top of its LEFT portion only (right: 2.3rem stays uncovered),
+   leaving the select's own dropdown-arrow strip exposed and untouched — a tap
+   there still opens the real native list (100% native; browsers don't allow
+   scripts to force that open anyway), while a tap on the rest of the box
+   shows a real numeric keypad instead. pointer-events stays "none" (fully
+   inert, clicks pass straight through to the select) except on phone/tablet
+   — laptop's mouse+keyboard flow is untouched. Higher specificity than
+   ".field input" (2 classes vs. 1 class + 1 element) so these overrides
+   actually win instead of being silently beaten by it. */
+.codeEntryWrap { position: relative; }
+.codeEntryWrap .codeEntryOverlay {
+  position: absolute;
+  inset: 0;
+  right: 2.3rem;
+  min-height: 0;
+  width: auto;
+  border: none;
+  border-radius: 6px 0 0 6px;
+  padding: 0.35rem 0.5rem;
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.codeEntryWrap .codeEntryOverlay.active {
+  opacity: 1;
+  background: #ffff8f;
+  outline: 3px solid var(--accent);
+  cursor: text;
+}
+[data-device-tier="phone"] .codeEntryWrap .codeEntryOverlay,
+[data-device-tier="tablet"] .codeEntryWrap .codeEntryOverlay {
+  pointer-events: auto;
+  cursor: pointer;
+}
+/* Custom, fixed-width arrow (replacing the OS-native one) only where the
+   overlay is actually active — its exact width is what "right: 2.3rem"
+   above is reserving, so this has to stay in sync with that value. Laptop
+   keeps its true native <select> appearance untouched. */
+[data-device-tier="phone"] .codeEntryWrap .codeEntrySelect,
+[data-device-tier="tablet"] .codeEntryWrap .codeEntrySelect {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.3rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23333'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 10px 6px;
+}
+
 .inlineBtnField { display: flex; align-items: stretch; gap: 0.3rem; }
 .inlineBtnField input { flex: 1; min-width: 0; }
 .nowBtn {

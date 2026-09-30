@@ -5,8 +5,8 @@
 // Lookup tables that can be edited in-app. Each edit overwrites the
 // in-memory LOOKUPS[key] array AND persists it to IndexedDB so it survives
 // reloads and travels to other devices via Backup (JSON) / Restore Backup.
-const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsHAM', 'stationsCMB'];
-const STATION_LOOKUP_KEYS = { WAS: 'stationsWAS', ALT: 'stationsALT', HAM: 'stationsHAM', CMB: 'stationsCMB' };
+const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsSTA'];
+const STATION_LOOKUP_KEYS = { WAS: 'stationsWAS', ALT: 'stationsALT', STA: 'stationsSTA' };
 
 // Simple code/name lookup tables editable via a shared table+form pattern
 // (Crew, Gear, Activity all have the same shape). codeIsNumeric matters:
@@ -116,6 +116,7 @@ function renderStationsTable() {
   tbody.innerHTML = list.map((s, i) => `
     <tr data-idx="${i}">
       <td class="mono">${s.station}</td>
+      <td><input type="text" class="stEdit" data-field="location" value="${s.location ?? ''}" /></td>
       <td><input type="number" step="0.00001" class="stEdit" data-field="lat" value="${s.lat ?? ''}" /></td>
       <td><input type="number" step="0.00001" class="stEdit" data-field="lon" value="${s.lon ?? ''}" /></td>
       <td><input type="text" class="stEdit" data-field="habitat" value="${s.habitat ?? ''}" /></td>
@@ -156,6 +157,7 @@ async function addStation() {
   }
   LOOKUPS[key].push({
     station: name,
+    location: $('stationLocation').value || null,
     lat: numOrNull($('stationLat').value),
     lon: numOrNull($('stationLon').value),
     habitat: $('stationHabitat').value || null,
@@ -163,7 +165,7 @@ async function addStation() {
     gear: $('stationGear').value || null,
   });
   await persistLookupEdit(key);
-  for (const id of ['stationName','stationLat','stationLon','stationHabitat','stationDepth','stationGear']) $(id).value = '';
+  for (const id of ['stationName','stationLocation','stationLat','stationLon','stationHabitat','stationDepth','stationGear']) $(id).value = '';
   renderStationsTable();
   toast(`Added ${name} to ${settingsStationSystem}.`);
 }
@@ -254,7 +256,12 @@ async function parseImportFile(file) {
 function inferAssignmentSystem(stationName) {
   if (!stationName) return null;
   const prefix = stationName.trim().slice(0, 3).toUpperCase();
-  if (['WAS', 'ALT', 'HAM', 'CMB'].includes(prefix)) return prefix;
+  if (['WAS', 'ALT', 'STA'].includes(prefix)) return prefix;
+  // HAM stations still come in under their own name prefix in an imported
+  // assignment file, but the master list folded HAM into the ALT button/list
+  // (2026-09-30) -- map them there too, so an imported HAM assignment still
+  // shows as "assigned" once the ALT system is selected during entry.
+  if (prefix === 'HAM') return 'ALT';
   return null;
 }
 
@@ -314,7 +321,7 @@ async function importAssignments() {
   summaryEl.hidden = false;
   summaryEl.classList.remove('takeThisFish');
   summaryEl.textContent = `Imported ${imported.length} station(s) for ${period}.` +
-    (unmatchedSystem.length ? ` ${unmatchedSystem.length} row(s) couldn't be matched to WAS/ALT/HAM/CMB (no System column and an unrecognized name prefix) — they were imported but won't appear in any system's filtered list: ${unmatchedSystem.slice(0, 8).join(', ')}${unmatchedSystem.length > 8 ? '…' : ''}` : '');
+    (unmatchedSystem.length ? ` ${unmatchedSystem.length} row(s) couldn't be matched to WAS/ALT/STA (no System column and an unrecognized name prefix) — they were imported but won't appear in any system's filtered list: ${unmatchedSystem.slice(0, 8).join(', ')}${unmatchedSystem.length > 8 ? '…' : ''}` : '');
 
   fileInput.value = '';
   renderAssignmentsList();

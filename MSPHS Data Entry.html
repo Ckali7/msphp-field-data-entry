@@ -96,8 +96,7 @@
           <div id="systemToggle" class="toggleGroup">
             <button class="toggleBtn" data-system="WAS">WAS</button>
             <button class="toggleBtn" data-system="ALT">ALT</button>
-            <button class="toggleBtn" data-system="HAM">HAM</button>
-            <button class="toggleBtn" data-system="CMB">CMB</button>
+            <button class="toggleBtn" data-system="STA">STA</button>
           </div>
         </div>
         <div class="field wide">
@@ -282,8 +281,7 @@
     <div class="toggleGroup" id="statusSystemToggle">
       <button class="toggleBtn" data-system="WAS">WAS</button>
       <button class="toggleBtn" data-system="ALT">ALT</button>
-      <button class="toggleBtn" data-system="HAM">HAM</button>
-      <button class="toggleBtn" data-system="CMB">CMB</button>
+      <button class="toggleBtn" data-system="STA">STA</button>
     </div>
     <div id="statusSummary" class="listSummary"></div>
     <table id="statusTable" class="dataTable">
@@ -364,16 +362,16 @@
 
     <!-- ---- Stations ---- -->
     <div class="tabPanel" id="settingsPanelStations" hidden>
-      <p class="settingsNote">This is the master station list used to auto-fill Latitude/Longitude and infer
-        Sound System during Collection entry. It's separate from the monthly assignment list (next tab).</p>
+      <p class="settingsNote">This is the master station list used to auto-fill Latitude/Longitude/Location and
+        infer Sound System during Collection entry. It's separate from the monthly assignment list (next tab).</p>
       <div class="toggleGroup" id="settingsStationSystemToggle">
         <button class="toggleBtn" data-system="WAS">WAS</button>
         <button class="toggleBtn" data-system="ALT">ALT</button>
-        <button class="toggleBtn" data-system="HAM">HAM</button>
-        <button class="toggleBtn" data-system="CMB">CMB</button>
+        <button class="toggleBtn" data-system="STA">STA</button>
       </div>
       <div class="entryRow">
         <div class="field"><label>Station</label><input id="stationName" type="text" /></div>
+        <div class="field"><label>Location</label><input id="stationLocation" type="text" /></div>
         <div class="field small"><label>Latitude</label><input id="stationLat" type="number" step="0.00001" /></div>
         <div class="field small"><label>Longitude</label><input id="stationLon" type="number" step="0.00001" /></div>
         <div class="field small"><label>Habitat</label><input id="stationHabitat" type="text" /></div>
@@ -382,7 +380,7 @@
         <button id="btnAddStation" class="bigBtn primary">Add Station</button>
       </div>
       <table class="dataTable">
-        <thead><tr><th>Station</th><th>Lat</th><th>Lon</th><th>Habitat</th><th>Depth</th><th>Gear</th><th></th></tr></thead>
+        <thead><tr><th>Station</th><th>Location</th><th>Lat</th><th>Lon</th><th>Habitat</th><th>Depth</th><th>Gear</th><th></th></tr></thead>
         <tbody id="stationsTbody"></tbody>
       </table>
     </div>

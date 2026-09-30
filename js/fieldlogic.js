@@ -42,11 +42,16 @@ function defaultGearForMonth(dateStr) {
   return null;
 }
 
+// 3 station-system buttons (per Chris, 2026-09-30): HAM merged into ALT
+// (was its own table/button; the live .mdb still tracks it separately, but
+// Chris wants one combined list going forward) and CMB (a never-populated
+// single placeholder station) retired in favor of STA, a real 122-station
+// list covering St. Andrew Sound + Cumberland River that never existed in
+// the .mdb at all. See the header comment in lookups.js for the full story.
 const STATION_TABLES = {
   WAS: 'stationsWAS',
   ALT: 'stationsALT',
-  HAM: 'stationsHAM',
-  CMB: 'stationsCMB',
+  STA: 'stationsSTA',
 };
 
 function lookupStation(system, stationName) {
@@ -56,16 +61,29 @@ function lookupStation(system, stationName) {
   return list.find((s) => s.station === stationName) || null;
 }
 
-// Station-name-prefix -> SoundSystem code, ported as-is from Station_LostFocus.
+// Station-name-prefix -> SoundSystem code, ported as-is from Station_LostFocus
+// (HAM and the ALT Doboy/Altamaha split included) — except STA, which is new
+// (see STATION_TABLES comment above) and needed its own rule.
 function inferSoundSystemFromStation(stationName) {
   if (!stationName) return null;
   const prefix = stationName.slice(0, 3).toUpperCase();
   const suffix4 = stationName.slice(-4);
   if (prefix === 'ALT') return suffix4 >= '0116' ? 9 : 10; // Doboy vs Altamaha
-  if (prefix === 'HAM') return 11; // Hampton River
+  if (prefix === 'HAM') return 11; // Hampton River -- unaffected by HAM's merge into the ALT button/list above, still its own SoundSystem
   if (prefix === 'WAS') return 3; // Wassaw
   if (prefix === 'SSI') return 13; // St. Simons
-  if (prefix === 'CMB') return 16; // Cumberland
+  if (prefix === 'STA') {
+    // St. Andrew Sound and Cumberland River are both covered by the one STA
+    // station list/button, but they're two distinct SoundSystem entries (15
+    // and 16). Split by each station's real latitude rather than inventing a
+    // station-number cutoff the way ALT's does — 30.9565 sits in a clean gap
+    // between the northernmost Cumberland-named station (30.952) and the
+    // southernmost St. Andrew-named one (30.961) in the source
+    // LStationAssignmentSTA export (2026-09-30).
+    const st = LOOKUPS.stationsSTA.find((s) => s.station === stationName);
+    if (st && st.lat != null) return st.lat >= 30.9565 ? 15 : 16; // St. Andrew vs Cumberland
+    return 15;
+  }
   return null;
 }
 
