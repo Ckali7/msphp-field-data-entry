@@ -430,10 +430,24 @@ device started from an existing one.
   be orphaned) plus the current calendar month's imported Monthly Station
   Assignment list, since that's month-scoped data too.
 - **Backup (JSON)** / **Restore Backup** — a full-fidelity dump/restore of
-  everything in the app's local storage, independent of the Access-shaped
-  CSVs above. Use this to move data to a new/replacement device, or as a
-  safety copy before doing anything you're unsure about. Restoring is
-  additive/overwrite-by-key, so it's safe to run more than once.
+  everything in the app's local storage (not just the 4 field-data tables —
+  also Crew/Gear/Activity/Stations/Tag Types edits and the monthly Station
+  Assignment imports), independent of the Access-shaped workbook above.
+  Use this to move data to a new/replacement device, or as a safety copy
+  before doing anything you're unsure about — it's what actually protects
+  against a browser "clear site data" action, since a downloaded file lives
+  outside the browser's own storage entirely. Restoring is
+  additive/overwrite-by-key, so it's safe to run more than once. Filename is
+  `MSPHP_Backup_YYYY-MM-DD.json` (date-only, changed 2026-10-01 per Chris —
+  was a full to-the-millisecond timestamp before, which buried the one part
+  that actually matters for keeping Downloads organized; matches
+  `MSPHP_Export_YYYY-MM-DD.xlsx`'s naming so the two sort/scan together).
+  Backing up twice in one day collides on the name — the browser
+  auto-suffixes the second as `(1).json` rather than overwriting, which is
+  fine for a deliberate same-day re-backup. A website can't make a browser
+  silently overwrite an existing file (blocked for security reasons), and
+  the newer API that can isn't reliably supported on mobile Chrome, which
+  ruled it out here.
 - **Backup reminder banner** — the Collections screen shows when this device
   was last backed up. Meant as a daily end-of-day habit: as soon as there's
   new data since the last backup it turns amber ("back up before you head

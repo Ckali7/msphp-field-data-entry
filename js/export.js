@@ -90,8 +90,15 @@ async function exportFullBackup() {
   const results = await Promise.all(BACKUP_STORES.map((s) => DB.getAll(s)));
   const backup = { exportedAt: new Date().toISOString() };
   BACKUP_STORES.forEach((s, i) => { backup[s] = results[i]; });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  downloadFile(`MSPHP_backup_${stamp}.json`, JSON.stringify(backup, null, 1), 'application/json');
+  // Date-only filename (2026-10-01, per Chris) -- matches exportForAccess()'s
+  // naming exactly, so the two files sort/scan together in Downloads. Was a
+  // full to-the-millisecond timestamp before, which buried the date that
+  // actually matters for keeping Downloads organized. Backing up twice in
+  // one day collides on the name -- the browser auto-suffixes the second
+  // (" (1).json") rather than overwriting, which is fine for an intentional
+  // same-day re-backup.
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadFile(`MSPHP_Backup_${stamp}.json`, JSON.stringify(backup, null, 1), 'application/json');
   await DB.markBackedUp();
 }
 
