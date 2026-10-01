@@ -223,6 +223,22 @@ main { padding: 0.75rem 0.9rem 4rem; }
 .dataTable tbody tr:nth-child(even) { background: #f6f6f6; }
 .dataTable tbody tr.openRow { background: #d6e6f5; }
 
+/* Add Counts modal (per Chris, 2026-10-01): the default table-layout:auto
+   let the "Final Count" header dictate an oversized column, squeezing the
+   Add-count input against the edge and forcing the whole table into its
+   .dataTable horizontal-scroll fallback on phone widths. Fixed, proportioned
+   column widths (tuned against the modalBox's own max-width) keep all 5
+   columns visible without scrolling even at ~360px. */
+.addCountsTable { table-layout: fixed; }
+.addCountsTable th, .addCountsTable td { padding: 0.3rem 0.3rem; font-size: 0.85rem; overflow-wrap: break-word; }
+.addCountsTable th:nth-child(1), .addCountsTable td:nth-child(1) { width: 30%; }
+.addCountsTable th:nth-child(2), .addCountsTable td:nth-child(2) { width: 17%; text-align: center; }
+.addCountsTable th:nth-child(3), .addCountsTable td:nth-child(3) { width: 21%; }
+.addCountsTable th:nth-child(4), .addCountsTable td:nth-child(4) { width: 11%; text-align: center; }
+.addCountsTable th:nth-child(5), .addCountsTable td:nth-child(5) { width: 21%; text-align: center; }
+.addCountsTable .addCountInput { width: 100%; min-width: 0; padding: 0.2rem 0.25rem; }
+.addCountsTable .addCountEquals { min-width: 0; width: 100%; padding: 0.25rem 0.2rem; }
+
 .mono { font-family: "Consolas", monospace; }
 .bold { font-weight: 700; }
 .muted { color: #444; font-weight: 600; }
@@ -627,6 +643,14 @@ main { padding: 0.75rem 0.9rem 4rem; }
 .deviceTierLabel { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
 .deviceTierNote { font-size: 0.8rem; color: #444; flex-basis: 100%; }
 .deviceTierReadout { font-size: 0.78rem; color: var(--accent-dark); flex-basis: 100%; }
+
+/* "Fish added" visual feedback (per Chris, 2026-10-01) -- a quick flash on
+   the entry row that just saved, paired with a synthesized beep
+   (signalFishAdded() in app.js). Toggled off entirely via the
+   #addFeedbackToggle in Table Data; when on, this class is added then
+   removed 400ms later. */
+@keyframes addFlash { from { background: var(--take-bg); } to { background: transparent; } }
+.addFlash { animation: addFlash 0.4s ease-out; }
 
 /* ---- screen size (phone/tablet/laptop) ----
    Driven entirely by the data-device-tier attribute app.js sets on <html>

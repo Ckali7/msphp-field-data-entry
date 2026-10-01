@@ -85,6 +85,29 @@ function recordLengthObservation(speciesCode, soundSystem, lengthType, value) {
   row[countKey] = (row[countKey] ?? 0) + 1;
 }
 
+// Anatomical length-relationship rule (per Chris, 2026-10-01): TL can never
+// be shorter than FL, and SL must always be less than whichever of FL/TL is
+// present. Unlike the Bio Parameters range check above, this isn't a
+// judgment call about plausible biological variation -- these orderings are
+// true by definition of how the three lengths are measured, so a violation
+// can only be a data-entry error. Returns an array of violation strings
+// (empty = no concerns); callers treat a non-empty result as a hard block,
+// not a confirm/override. Applies identically to Measured and Sacrificed
+// Fish (both forms call this).
+function checkLengthRelationships(TL, FL, SL) {
+  const issues = [];
+  if (TL != null && FL != null && TL < FL) {
+    issues.push(`TL (${TL}) cannot be shorter than FL (${FL}).`);
+  }
+  if (SL != null && FL != null && SL >= FL) {
+    issues.push(`SL (${SL}) must be less than FL (${FL}).`);
+  }
+  if (SL != null && TL != null && SL >= TL) {
+    issues.push(`SL (${SL}) must be less than TL (${TL}).`);
+  }
+  return issues;
+}
+
 // Returns an array of warning strings (empty = no concerns). Call whenever
 // SpeciesCode plus one or more of FL / SL / TotalWeight change.
 function checkMeasurement(speciesCode, soundSystem, { FL, SL, TotalWeight } = {}) {

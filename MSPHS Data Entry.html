@@ -249,8 +249,8 @@
         <p class="settingsNote">For fish seen/caught but not individually measured — add to
           each species' running total. Press "=" to fold Add into Current for that row.
           Nothing is saved until you click Update Counts.</p>
-        <table class="dataTable">
-          <thead><tr><th>Species</th><th>Current</th><th>Add</th><th></th><th>Final Count</th></tr></thead>
+        <table class="dataTable addCountsTable">
+          <thead><tr><th>Species</th><th>Current</th><th>Add</th><th></th><th>Final</th></tr></thead>
           <tbody id="addCountsTbody"></tbody>
         </table>
         <div class="modalFooter">
@@ -355,6 +355,15 @@
       </div>
       <span class="deviceTierNote">Auto picks a layout from the window size and updates live. Pick one to lock it in on this device instead — useful if Auto ever guesses wrong.</span>
       <span class="deviceTierReadout mono" id="deviceTierReadout"></span>
+    </div>
+
+    <div class="deviceTierBar">
+      <span class="deviceTierLabel">Fish-added feedback</span>
+      <div class="toggleGroup" id="addFeedbackToggle">
+        <button class="toggleBtn" data-add-feedback="on">On</button>
+        <button class="toggleBtn" data-add-feedback="off">Off</button>
+      </div>
+      <span class="deviceTierNote">A brief flash + beep when a fish is added (Add Fish or Enter) on Measured/Sacrificed/Tagged Fish — on by default.</span>
     </div>
 
     <nav id="settingsTabStrip">

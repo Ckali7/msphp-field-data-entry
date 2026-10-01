@@ -67,6 +67,57 @@ function setDeviceTierOverride(value) {
   applyDeviceTier();
 }
 
+// ---------- "fish added" feedback ----------
+// Per Chris (2026-10-01): the app is fast enough that a rapid Add/Enter can
+// leave you unsure whether a fish actually saved. A brief flash on the
+// entry row plus a short synthesized beep (Web Audio -- no audio file to
+// ship or cache) confirms it without slowing anything down. Table Data
+// screen has an on/off toggle for it (device preference, same
+// DB.setMeta()-backed pattern as deviceTierOverride above, not a
+// lookupOverrides reference-data edit) since a boat full of beeping isn't
+// for everyone.
+let fishAddedFeedbackEnabled = true;
+
+function setFishAddedFeedback(value) {
+  fishAddedFeedbackEnabled = value;
+  document.querySelectorAll('#addFeedbackToggle .toggleBtn').forEach((b) => b.classList.toggle('active', (b.dataset.addFeedback === 'on') === value));
+}
+
+let addFishAudioCtx = null;
+function playAddFishBeep() {
+  try {
+    addFishAudioCtx = addFishAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = addFishAudioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = 0.15;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.12);
+    osc.stop(ctx.currentTime + 0.13);
+  } catch (e) {
+    // Web Audio unavailable/blocked -- the flash below still shows, so a
+    // failed beep is a silent no-op rather than a disruptive error.
+  }
+}
+
+// Call right after a fish record is successfully saved, passing that tab's
+// entryRow id ('measuredEntryRow' / 'sacrificedEntryRow' / 'taggedEntryRow').
+function signalFishAdded(entryRowId) {
+  if (!fishAddedFeedbackEnabled) return;
+  const el = $(entryRowId);
+  if (el) {
+    el.classList.remove('addFlash');
+    void el.offsetWidth; // restart the CSS animation if it's still running from a rapid prior add
+    el.classList.add('addFlash');
+    setTimeout(() => el.classList.remove('addFlash'), 400);
+  }
+  playAddFishBeep();
+}
+
 // ---------- small helpers ----------
 
 function $(id) { return document.getElementById(id); }
@@ -479,6 +530,12 @@ async function newCollection() {
   applyGearDefault(today);
   await refreshStationList();
   updateStatusPills();
+  // A new collection's defaulted/carried-over values (Date, VesselOp,
+  // DataRec, FishMeas, Gear) haven't been deliberately chosen YET for this
+  // collection, even though they're not blank on screen -- baselines start
+  // blank so the first real edit to each is never gated (see
+  // guardedCollectionChange() above).
+  resetCollectionFieldBaselineBlank();
 }
 
 function clearCollectionForm() {
@@ -544,6 +601,11 @@ function loadCollectionIntoForm(c) {
   $('f_DO').value = c.DO ?? '';
   $('f_SubSampleTool').checked = !!c.SubSampleToolOn;
   updateStatusPills();
+  // Reopening a saved collection: every populated field already holds a
+  // real, committed value (whatever that value's own history was) -- from
+  // here on, changing any of them warns (see guardedCollectionChange()
+  // above).
+  resetCollectionFieldBaselineFromForm();
 }
 
 function readCollectionForm() {
@@ -851,6 +913,15 @@ async function onStationChanged() {
     // station's own short description (per Chris, 2026-09-30) the same way
     // lat/lon are seeded, rather than leaving it blank for every collection.
     if (st.location != null) $('f_Location').value = st.location;
+  }
+
+  // These are set programmatically above (no 'change' event fires), so they
+  // never pass through guardedCollectionChange() on their own -- sync their
+  // baselines here instead, otherwise the NEXT real edit to Lat/Long/
+  // Location/SoundSystem would be compared against a stale pre-cascade
+  // value instead of what's actually on screen right now.
+  for (const id of ['f_SoundSystem', 'f_Latitude', 'f_Longitude', 'f_Location']) {
+    collectionFieldBaseline[id] = collectionFieldValue(id);
   }
 
   const assignment = await getActiveAssignment($('f_Date').value);
@@ -1218,10 +1289,28 @@ async function commitAddCounts() {
 // special about how the fish gets saved, only which fields are populated.
 function openTaggedRecapsModal() {
   $('taggedRecapsModal').hidden = false;
+  syncTagFieldsGating();
 }
 
 function closeTaggedRecapsModal() {
   $('taggedRecapsModal').hidden = true;
+}
+
+// TagStatus 0 = "Not Tagged" / Disposition 2 = "Released without Tag" mean
+// there's no tag to record, so the 3 tag type/number pairs are disabled and
+// cleared whenever either is selected (per Chris, 2026-10-01) -- re-enabled
+// as soon as neither condition holds.
+const TAG_DETAIL_FIELD_IDS = ['mfTag_TagType1', 'mfTag_TagNumber1',
+  'mfTag_TagType2', 'mfTag_TagNumber2', 'mfTag_TagType3', 'mfTag_TagNumber3'];
+function syncTagFieldsGating() {
+  const tagStatus = numOrNull($('mfTag_TagStatus').value);
+  const disposition = numOrNull($('mfTag_Disposition').value);
+  const disable = tagStatus === 0 || disposition === 2;
+  for (const id of TAG_DETAIL_FIELD_IDS) {
+    const el = $(id);
+    el.disabled = disable;
+    if (disable) el.value = '';
+  }
 }
 
 async function addMeasuredFish() {
@@ -1255,6 +1344,16 @@ async function addMeasuredFish() {
 
   const TotalWeight = numOrNull($('mf_TotalWeight').value); // usually blank — see the "+ SL / Wt" reveal button
   const soundSystem = numOrNull($('f_SoundSystem').value);
+
+  // Hard-blocking anatomical rule (per Chris, 2026-10-01): TL < FL or
+  // SL >= FL/TL can only be a data-entry error (see checkLengthRelationships
+  // in validation.js) -- no override, just bounce back to fix it.
+  const lengthRelIssues = checkLengthRelationships(TL, FL, SL);
+  if (lengthRelIssues.length) {
+    alert(lengthRelIssues.join('\n'));
+    $(TL != null && FL != null && TL < FL ? 'mf_TL' : 'mf_SL').focus();
+    return;
+  }
 
   // Blocking FL/TL reasonable-range check (per Chris, 2026-10-01) — replaces
   // the old passive post-save FL warning entirely (see validation.js). A
@@ -1316,6 +1415,7 @@ async function addMeasuredFish() {
   };
   await DB.put('measuredFish', record);
   clearEntryRowDraft('measured');
+  signalFishAdded('measuredEntryRow');
 
   // Every accepted FL/TL grows the species+soundSystem range, not just
   // confirmed violations — a still-warming-up range needs to learn from
@@ -1342,6 +1442,7 @@ async function addMeasuredFish() {
   // closing it here too is a no-op if it was never shown.
   for (const id of ['mfTag_TagStatus','mfTag_Disposition','mfTag_TagType1','mfTag_TagNumber1',
     'mfTag_TagType2','mfTag_TagNumber2','mfTag_TagType3','mfTag_TagNumber3']) $(id).value = '';
+  syncTagFieldsGating();
   closeTaggedRecapsModal();
   // Species is left as-is (not cleared) for rapid same-species entry, so per
   // Chris (2026-09) focus goes straight to FL rather than back to Species —
@@ -1420,10 +1521,22 @@ async function addSacrificedFish() {
   const sampleNumber = numOrNull($('sf_SampleNumber').value);
   if (sampleNumber == null) { toast('Sample # required', true); return; }
 
+  const TL = numOrNull($('sf_TL').value);
   const FL = numOrNull($('sf_FL').value);
   const SL = numOrNull($('sf_SL').value);
   const TotalWeight = numOrNull($('sf_TotalWeight').value);
   const soundSystem = numOrNull($('f_SoundSystem').value);
+
+  // Same hard-blocking anatomical rule as Measured Fish (per Chris,
+  // 2026-10-01, confirmed scope = both forms) — see checkLengthRelationships
+  // in validation.js.
+  const lengthRelIssues = checkLengthRelationships(TL, FL, SL);
+  if (lengthRelIssues.length) {
+    alert(lengthRelIssues.join('\n'));
+    $(TL != null && FL != null && TL < FL ? 'sf_TL' : 'sf_SL').focus();
+    return;
+  }
+
   const warnings = checkMeasurement(speciesCode, soundSystem, { FL, SL, TotalWeight });
 
   const id = `${currentCollectionNumber}-${String(sampleNumber).padStart(4, '0')}`;
@@ -1433,8 +1546,7 @@ async function addSacrificedFish() {
     ID: id,
     SpeciesCode: speciesCode,
     TagType: null,
-    TL: numOrNull($('sf_TL').value),
-    FL, SL, TotalWeight,
+    TL, FL, SL, TotalWeight,
     SexCode: numOrNull($('sf_SexCode').value),
     GonadStage: numOrNull($('sf_GonadStage').value),
     GonadWeight: numOrNull($('sf_GonadWeight').value),
@@ -1444,6 +1556,7 @@ async function addSacrificedFish() {
   };
   await DB.put('sacrificedFish', record);
   clearEntryRowDraft('sacrificed');
+  signalFishAdded('sacrificedEntryRow');
 
   for (const id2 of ['sf_TL','sf_FL','sf_SL','sf_TotalWeight','sf_GonadWeight','sf_Comments']) $(id2).value = '';
   $('sf_GonadsTaken').checked = false;
@@ -1536,6 +1649,7 @@ async function addTaggedFish() {
   };
   await DB.put('taggedFish', record);
   clearEntryRowDraft('tagged');
+  signalFishAdded('taggedEntryRow');
 
   const warnEl = $('taggedWarning');
   const recapture = LOOKUPS.tagType.find((t) => /recap/i.test(t.name));
@@ -1742,6 +1856,64 @@ function wireTouchCodeEntry(select) {
   });
 }
 
+// ---------- Collection-tab change-confirmation gate ----------
+// Per Chris (2026-10-01): changing a Collection-tab field that already holds
+// a real, deliberately-chosen value -- not a first-time fill, and not one
+// of this app's own auto-fills (Gear's month default, Station's Lat/Long/
+// Location/SoundSystem cascade, VesselOp's DataRec default) -- asks for
+// confirmation before applying it. Declining reverts the field to its prior
+// value and skips whatever cascade that field would otherwise trigger.
+// Scoped to the Collection tab only (not the fast per-fish entry rows,
+// which are rapid/high-volume and not what this request was about).
+//
+// "Already set" tracking is per open collection, not per field in the
+// abstract: reopening a saved collection treats every populated field as
+// already-set (editing any of it, including a value that only ever came
+// from an auto-fill at creation time, now warns -- consistent with "going
+// back and changing a field's data after it originally was set"), while a
+// brand-new collection starts every field's baseline blank even though
+// several show carried-over/defaulted values on screen; the FIRST genuine
+// edit in a new collection just commits that baseline (no confirm), and
+// only a second, later change to the same field warns. Because a baseline
+// is only ever written here or by a field's own confirmed 'change', and
+// none of this app's programmatic auto-fills fire a 'change' event, an
+// auto-filled value never itself becomes a protected baseline -- only a
+// person actually choosing it does.
+const COLLECTION_FIELD_IDS = ['f_ActivityCode','f_Date','f_Time','f_Time2','f_Station','f_SoundSystem',
+  'f_Latitude','f_Longitude','f_Location','f_GearCode','f_DirTide','f_VesselOp',
+  'f_DataRec','f_FishMeas','f_Comments','f_WeatherConditions','f_WindDirection','f_WindVelocity',
+  'f_TideStage','f_MoonPhaseCode','f_Depth','f_Salinity','f_WaterTemp','f_DO'];
+let collectionFieldBaseline = {};
+
+function collectionFieldValue(id) {
+  return $(id).value;
+}
+function resetCollectionFieldBaselineBlank() {
+  collectionFieldBaseline = {};
+  for (const id of COLLECTION_FIELD_IDS) collectionFieldBaseline[id] = '';
+}
+function resetCollectionFieldBaselineFromForm() {
+  collectionFieldBaseline = {};
+  for (const id of COLLECTION_FIELD_IDS) collectionFieldBaseline[id] = collectionFieldValue(id);
+}
+function isBlankFieldValue(v) {
+  return v === '' || v == null;
+}
+// Wraps a Collection-tab field's real on-change behavior (cascade + save)
+// with the confirm-before-change gate described above.
+function guardedCollectionChange(id, fn) {
+  const now = collectionFieldValue(id);
+  const prev = collectionFieldBaseline[id];
+  if (!isBlankFieldValue(prev) && now !== prev) {
+    if (!confirm('This field already has a value entered. Do you want to change it?')) {
+      $(id).value = prev;
+      return;
+    }
+  }
+  collectionFieldBaseline[id] = now;
+  fn();
+}
+
 function wireEvents() {
   for (const id of CODE_ENTRY_SELECT_IDS) { enableCodeEntry($(id)); wireTouchCodeEntry($(id)); }
 
@@ -1816,6 +1988,13 @@ function wireEvents() {
       DB.setMeta('deviceTierOverride', b.dataset.tier);
     });
   });
+  document.querySelectorAll('#addFeedbackToggle .toggleBtn').forEach((b) => {
+    b.addEventListener('click', () => {
+      const value = b.dataset.addFeedback === 'on';
+      setFishAddedFeedback(value);
+      DB.setMeta('fishAddedFeedbackEnabled', value);
+    });
+  });
   // matchMedia's own change event fires exactly when a query's truth value
   // flips (resize, rotation, zoom) — more reliable on mobile than a plain
   // resize listener, which can be inconsistent around orientation changes.
@@ -1831,15 +2010,22 @@ function wireEvents() {
   window.addEventListener('resize', debouncedApplyDeviceTier);
   window.addEventListener('orientationchange', debouncedApplyDeviceTier);
 
-  // Collection tab: auto-save on change, plus the special-case handlers
-  const collectionFieldIds = ['f_ActivityCode','f_Date','f_Time','f_Time2','f_Station','f_SoundSystem',
-    'f_Latitude','f_Longitude','f_Location','f_GearCode','f_DirTide','f_VesselOp',
-    'f_DataRec','f_FishMeas','f_Comments','f_WeatherConditions','f_WindDirection','f_WindVelocity',
-    'f_TideStage','f_MoonPhaseCode','f_Depth','f_Salinity','f_WaterTemp','f_DO','f_SubSampleTool'];
-  for (const id of collectionFieldIds) {
-    $(id).addEventListener('change', () => saveCollectionForm());
+  // Collection tab: auto-save on change, gated by guardedCollectionChange()
+  // (see above) for every field except SubSampleTool (a checkbox toggle,
+  // not a "did you mean to change this" concern). f_Station/f_Date/
+  // f_VesselOp get one combined listener each (cascade + save) rather than
+  // a plain one from this loop plus a separate cascade one, so each field
+  // triggers the confirm gate at most once per change.
+  const COLLECTION_FIELDS_WITH_CASCADE = new Set(['f_Station', 'f_Date', 'f_VesselOp']);
+  for (const id of COLLECTION_FIELD_IDS) {
+    if (COLLECTION_FIELDS_WITH_CASCADE.has(id)) continue;
+    $(id).addEventListener('change', () => guardedCollectionChange(id, () => saveCollectionForm()));
   }
-  $('f_Station').addEventListener('change', () => { onStationChanged(); saveCollectionForm(); });
+  $('f_SubSampleTool').addEventListener('change', () => saveCollectionForm());
+  $('f_Station').addEventListener('change', () => guardedCollectionChange('f_Station', () => {
+    onStationChanged();
+    saveCollectionForm();
+  }));
   // Per Chris: rather than a persistent on-screen hint (was throwing off row
   // alignment), only warn — once per collection — the first time the field
   // is touched, and only when there's genuinely no list for that month.
@@ -1852,25 +2038,25 @@ function wireEvents() {
   // The active station-assignment period is keyed off the collection's Date,
   // so a date change can change which stations are offered/allowed. Gear's
   // month-based default lives here too now, for the same reason.
-  $('f_Date').addEventListener('change', () => {
+  $('f_Date').addEventListener('change', () => guardedCollectionChange('f_Date', () => {
     if (!$('f_GearCode').value || gearWasAutoSet) {
       applyGearDefault($('f_Date').value);
-      saveCollectionForm();
     }
+    saveCollectionForm();
     refreshStationList();
-  });
+  }));
   // A real user pick locks Gear in — only a genuine 'change' fires this
   // (programmatic .value assignment from applyGearDefault() above does not),
   // so this can't fire from the auto-default itself.
   $('f_GearCode').addEventListener('change', () => { gearWasAutoSet = false; });
   // Data Rec. defaults to whoever's running the boat, but stays a dropdown
   // so it can be changed when the rotation is handled differently.
-  $('f_VesselOp').addEventListener('change', () => {
+  $('f_VesselOp').addEventListener('change', () => guardedCollectionChange('f_VesselOp', () => {
     if (!$('f_DataRec').value && $('f_VesselOp').value) {
       $('f_DataRec').value = $('f_VesselOp').value;
-      saveCollectionForm();
     }
-  });
+    saveCollectionForm();
+  }));
 
   $('mf_SpeciesCode').addEventListener('change', async () => {
     const code = numOrNull($('mf_SpeciesCode').value);
@@ -1914,6 +2100,8 @@ function wireEvents() {
   $('btnTaggedRecaps').addEventListener('click', openTaggedRecapsModal);
   $('btnTaggedRecapsClose').addEventListener('click', closeTaggedRecapsModal);
   $('btnTaggedRecapsAdd').addEventListener('click', addMeasuredFish);
+  $('mfTag_TagStatus').addEventListener('change', syncTagFieldsGating);
+  $('mfTag_Disposition').addEventListener('change', syncTagFieldsGating);
 
   $('btnExportAccess').addEventListener('click', async () => {
     const counts = await exportForAccess();
@@ -1988,6 +2176,7 @@ async function init() {
   await refreshStationList();
   wireEvents();
   setDeviceTierOverride(await DB.getMeta('deviceTierOverride', 'auto'));
+  setFishAddedFeedback(await DB.getMeta('fishAddedFeedbackEnabled', true));
   // Per Chris (2026-10): if the app got interrupted mid-collection (phone
   // OS discarding a backgrounded tab, battery dying, etc.) rather than
   // deliberately left via Home, land back in that same collection instead

@@ -286,6 +286,73 @@ device started from an existing one.
     starting baseline — it does NOT erase ranges a real device has already
     learned, since those live in that device's own IndexedDB
     (`lookupOverrides`), which always wins over the shipped file on load.
+- **"Tuning round" (2026-10-01, per Chris) — six small fixes/additions:**
+  - **TL/FL/SL length-relationship rule.** TL can never be shorter than FL,
+    and SL must always be less than whichever of FL/TL is present — true by
+    definition of how the three lengths are measured, so (unlike the Bio
+    Parameters range check above) a violation can only be a data-entry
+    error. Add Fish is hard-blocked with an `alert()` and focus bounces to
+    the offending field (TL or SL) with its value intact — there's no
+    "are you sure, save anyway" override, since this can never legitimately
+    be correct. Applies identically to **both** Measured Fish and
+    Sacrificed Fish. Implementation: `checkLengthRelationships()` in
+    `js/validation.js`, called from `addMeasuredFish()` and
+    `addSacrificedFish()` in `js/app.js`, checked before the Bio Parameters
+    range check.
+  - **"Fish added" feedback.** A brief background flash on the entry row
+    (`.addFlash`, 0.4s) plus a short synthesized beep (Web Audio
+    `OscillatorNode`, no audio file shipped/cached) on every successful Add
+    Fish/Enter across Measured, Sacrificed, and Tagged Fish —
+    `signalFishAdded()` in `js/app.js`. On by default; toggle at
+    **Settings > Table Data**, in the bar just below the Screen Size
+    override (`#addFeedbackToggle`), persisted via `DB.setMeta()` the same
+    way `deviceTierOverride` is (a device preference, not shared/editable
+    reference data, so it doesn't live in `lookupOverrides`).
+  - **Tag Status / Disposition gating.** In the Tagged/Recaps popup,
+    picking **Tag Status = Not Tagged** or **Disposition = Released
+    without Tag** disables and clears the three Tag Type/Tag Number pairs
+    (there's nothing to record) — re-enabled the moment neither condition
+    holds. `syncTagFieldsGating()` in `js/app.js`, wired to both selects'
+    `change` and re-run after every fish is added (which already clears
+    both fields back to blank) and when the popup opens.
+  - **Collection-tab change-confirmation gate.** Changing a Collection-tab
+    field that already holds a real, deliberately-chosen value — not a
+    first-time fill, and not one of this app's own auto-fills (Station's
+    Lat/Long/Location/SoundSystem cascade, Gear's month default, VesselOp's
+    DataRec default) — now asks "This field already has a value entered.
+    Do you want to change it?" before applying it. **Cancel** reverts the
+    field to its prior value and skips whatever cascade it would have
+    triggered; **OK** applies the change and lets the cascade run
+    normally. Scoped to the Collection tab only — the fast per-fish entry
+    rows are unaffected. "Already set" is tracked per open collection, not
+    per field in the abstract: reopening a saved collection treats every
+    populated field (including one that only ever came from an auto-fill
+    at creation time) as already-set, while a brand-new collection starts
+    every field's baseline blank even though several show carried-over/
+    defaulted values on screen — the first genuine edit in a new collection
+    just commits that baseline (no confirm), and only a second, later
+    change to the same field warns. Implementation:
+    `guardedCollectionChange()` / `collectionFieldBaseline` /
+    `resetCollectionFieldBaselineBlank()` /
+    `resetCollectionFieldBaselineFromForm()` in `js/app.js`. Left
+    deliberately out of this: the `SubSampleTool` checkbox (a toggle, not a
+    "did you mean to change this" concern) and native dialogs' button
+    labels (see below).
+  - **Yes/No vs. OK/Cancel — no change made.** Chris asked for Yes/No
+    buttons on warning/confirm popups; this app's own overlay pattern
+    (`.modalOverlay`/`.modalBox`, used by Add Counts and Tagged/Recaps)
+    already uses real buttons it could label anything, but every other
+    prompt in the app (including everything new in this round) is a native
+    `confirm()`/`alert()`, and browsers do not allow relabeling those
+    buttons — the only way to get "Yes/No" text would be a full custom
+    modal rebuild for every such prompt. Chris confirmed native
+    OK/Cancel is fine; no code changed for this item.
+  - **Add Counts mobile layout.** The table's default `table-layout: auto`
+    let the "Final Count" header dictate an oversized column, squeezing
+    the Add-count input against the edge and forcing the whole table into
+    horizontal scroll on phone widths. Fixed, proportioned column widths
+    (`.addCountsTable` in `css/style.css`) plus a shorter "Final" header
+    keep all 5 columns visible without scrolling even at ~360px.
 - **Species-specific fields** — FL is always shown; TL and Sex show up per
   species via a three-tier rule worked out with Chris over a few rounds
   (2026-09/10; full reasoning and exact logic in
