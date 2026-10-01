@@ -149,6 +149,10 @@ function populateStaticDropdowns() {
   fillSelect($('mf_SpeciesCode'), speciesSorted, { valueKey: 'code', labelKey: 'common' });
   fillSelect($('sf_SpeciesCode'), speciesSorted, { valueKey: 'code', labelKey: 'common' });
   fillSelect($('tf_SpeciesCode'), speciesSorted, { valueKey: 'code', labelKey: 'common' });
+
+  // Settings > Table Data > Bio Parameters "Add Row" form.
+  fillSelect($('bpSpecies'), speciesSorted, { valueKey: 'code', labelKey: 'common' });
+  fillSelect($('bpSoundSystem'), LOOKUPS.soundSystem, { blank: true });
 }
 
 // Set by refreshStationList(), read by the Station field's one-time focus
@@ -1252,6 +1256,27 @@ async function addMeasuredFish() {
   const TotalWeight = numOrNull($('mf_TotalWeight').value); // usually blank — see the "+ SL / Wt" reveal button
   const soundSystem = numOrNull($('f_SoundSystem').value);
 
+  // Blocking FL/TL reasonable-range check (per Chris, 2026-10-01) — replaces
+  // the old passive post-save FL warning entirely (see validation.js). A
+  // "No" bounces back to the specific offending field (value left in place,
+  // not cleared) rather than discarding the whole entry, since it's most
+  // likely just a keystroke error.
+  const lengthChecks = [
+    { type: 'FL', value: FL, inputId: 'mf_FL' },
+    ...(requiresTL ? [{ type: 'TL', value: TL, inputId: 'mf_TL' }] : []),
+  ]
+    .map((c) => ({ ...c, check: checkLengthRange(speciesCode, soundSystem, c.type, c.value) }))
+    .filter((c) => c.check.status === 'violation');
+
+  if (lengthChecks.length) {
+    const name = speciesName(speciesCode);
+    const lines = lengthChecks.map((c) => `${c.type} ${c.value} is outside the current range for ${name}: ${c.check.min} - ${c.check.max}.`);
+    if (!confirm(`${lines.join('\n')}\n\nIs this measurement correct?`)) {
+      $(lengthChecks[0].inputId).focus();
+      return;
+    }
+  }
+
   const warnings = checkMeasurement(speciesCode, soundSystem, { FL, SL, TotalWeight });
 
   const existingRows = await DB.getAllByIndex('measuredFish', 'byCollection', currentCollectionNumber);
@@ -1291,6 +1316,14 @@ async function addMeasuredFish() {
   };
   await DB.put('measuredFish', record);
   clearEntryRowDraft('measured');
+
+  // Every accepted FL/TL grows the species+soundSystem range, not just
+  // confirmed violations — a still-warming-up range needs to learn from
+  // ordinary, in-range entries too (see recordLengthObservation() in
+  // validation.js).
+  recordLengthObservation(speciesCode, soundSystem, 'FL', FL);
+  if (TL != null) recordLengthObservation(speciesCode, soundSystem, 'TL', TL);
+  await persistLookupEdit('bioParms');
 
   // sync TotalCount across this species' rows in this collection (mirrors original behavior)
   const updated = await DB.getAllByIndex('measuredFish', 'byCollection', currentCollectionNumber);
@@ -1740,6 +1773,7 @@ function wireEvents() {
   $('btnAddGear').addEventListener('click', () => addSimpleLookupEntry('gear'));
   $('btnAddActivity').addEventListener('click', () => addSimpleLookupEntry('activity'));
   $('btnAddTagType').addEventListener('click', () => addSimpleLookupEntry('physicalTagType'));
+  $('btnAddBioParms').addEventListener('click', addBioParmsEntry);
   document.querySelectorAll('#settingsStationSystemToggle .toggleBtn').forEach((b) => {
     b.addEventListener('click', () => {
       settingsStationSystem = b.dataset.system;

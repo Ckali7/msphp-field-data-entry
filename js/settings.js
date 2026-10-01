@@ -5,7 +5,7 @@
 // Lookup tables that can be edited in-app. Each edit overwrites the
 // in-memory LOOKUPS[key] array AND persists it to IndexedDB so it survives
 // reloads and travels to other devices via Backup (JSON) / Restore Backup.
-const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsSTA', 'physicalTagType'];
+const EDITABLE_LOOKUPS = ['crew', 'gear', 'activity', 'stationsWAS', 'stationsALT', 'stationsSTA', 'physicalTagType', 'bioParms'];
 const STATION_LOOKUP_KEYS = { WAS: 'stationsWAS', ALT: 'stationsALT', STA: 'stationsSTA' };
 
 // Simple code/name lookup tables editable via a shared table+form pattern
@@ -47,12 +47,14 @@ function showSettingsTab(name) {
   $('settingsPanelStations').hidden = name !== 'stations';
   $('settingsPanelAssignments').hidden = name !== 'assignments';
   $('settingsPanelTagTypes').hidden = name !== 'tagTypes';
+  $('settingsPanelBioParms').hidden = name !== 'bioParms';
   if (name === 'crew') renderSimpleLookupTable('crew');
   if (name === 'gear') renderSimpleLookupTable('gear');
   if (name === 'activity') renderSimpleLookupTable('activity');
   if (name === 'stations') renderStationsTable();
   if (name === 'assignments') renderAssignmentsList();
   if (name === 'tagTypes') renderSimpleLookupTable('physicalTagType');
+  if (name === 'bioParms') renderBioParmsTable();
 }
 
 // ---------- Crew / Gear / Activity (shared simple code+name editor) ----------
@@ -176,6 +178,80 @@ async function addStation() {
   for (const id of ['stationName','stationLocation','stationLat','stationLon','stationHabitat','stationDepth','stationGear']) $(id).value = '';
   renderStationsTable();
   toast(`Added ${name} to ${settingsStationSystem}.`);
+}
+
+// ---------- Bio Parameters (FL/TL reasonable-range checks) ----------
+// Species+SoundSystem rows with FL/TL Min/Max and a "how many real
+// measurements built this range" count each (per Chris, 2026-10-01) — see
+// checkLengthRange()/recordLengthObservation() in validation.js for how
+// these get read/grown automatically as Measured Fish entries come in. Fully
+// editable here too: a count typed in directly (e.g. a big number) marks a
+// hand-entered range as already-trusted, skipping the normal 5-real-entry
+// warmup; leaving Count at 0 lets it warm up normally from real survey data,
+// same as a range the app creates on its own. The existing regression
+// coefficients (FL-to-SL, FL/SL-to-Weight) aren't shown here — unrelated to
+// this feature, untouched by any edit made in this table.
+function soundSystemName(code) {
+  const s = LOOKUPS.soundSystem.find((x) => x.code === code);
+  return s ? s.name : String(code);
+}
+
+function renderBioParmsTable() {
+  const list = LOOKUPS.bioParms;
+  const tbody = $('bioParmsTbody');
+  tbody.innerHTML = list.map((r, i) => `
+    <tr data-idx="${i}">
+      <td>${speciesName(r.species)}</td>
+      <td>${soundSystemName(r.soundSystem)}</td>
+      <td><input type="number" class="bpEdit" data-field="flMin" value="${r.flMin ?? ''}" /></td>
+      <td><input type="number" class="bpEdit" data-field="flMax" value="${r.flMax ?? ''}" /></td>
+      <td><input type="number" class="bpEdit" data-field="flCount" value="${r.flCount ?? 0}" /></td>
+      <td><input type="number" class="bpEdit" data-field="tlMin" value="${r.tlMin ?? ''}" /></td>
+      <td><input type="number" class="bpEdit" data-field="tlMax" value="${r.tlMax ?? ''}" /></td>
+      <td><input type="number" class="bpEdit" data-field="tlCount" value="${r.tlCount ?? 0}" /></td>
+      <td><button class="smallBtn delBtn">Delete</button></td>
+    </tr>`).join('');
+
+  tbody.querySelectorAll('.bpEdit').forEach((inp) => {
+    inp.addEventListener('change', async () => {
+      const idx = Number(inp.closest('tr').dataset.idx);
+      const field = inp.dataset.field;
+      const val = field.endsWith('Count') ? (numOrNull(inp.value) ?? 0) : numOrNull(inp.value);
+      LOOKUPS.bioParms[idx][field] = val;
+      await persistLookupEdit('bioParms');
+      toast('Bio Parameters updated.');
+    });
+  });
+  tbody.querySelectorAll('.delBtn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const idx = Number(btn.closest('tr').dataset.idx);
+      const r = LOOKUPS.bioParms[idx];
+      if (!confirm(`Remove the Bio Parameters row for ${speciesName(r.species)} / ${soundSystemName(r.soundSystem)}?`)) return;
+      LOOKUPS.bioParms.splice(idx, 1);
+      await persistLookupEdit('bioParms');
+      renderBioParmsTable();
+    });
+  });
+}
+
+async function addBioParmsEntry() {
+  const species = numOrNull($('bpSpecies').value);
+  const soundSystem = numOrNull($('bpSoundSystem').value);
+  if (species == null || soundSystem == null) { toast('Species and Sound System are required.', true); return; }
+  if (LOOKUPS.bioParms.some((r) => r.species === species && r.soundSystem === soundSystem)) {
+    toast('A Bio Parameters row already exists for that Species + Sound System — edit it directly in the table instead.', true);
+    return;
+  }
+  LOOKUPS.bioParms.push({
+    species, soundSystem,
+    flMin: numOrNull($('bpFLMin').value), flMax: numOrNull($('bpFLMax').value), flCount: numOrNull($('bpFLCount').value) ?? 0,
+    tlMin: numOrNull($('bpTLMin').value), tlMax: numOrNull($('bpTLMax').value), tlCount: numOrNull($('bpTLCount').value) ?? 0,
+    flSLm: null, flSLb: null, flTWa: null, flTWb: null, slTWa: null, slTWb: null,
+  });
+  await persistLookupEdit('bioParms');
+  for (const id of ['bpFLMin','bpFLMax','bpFLCount','bpTLMin','bpTLMax','bpTLCount']) $(id).value = '';
+  renderBioParmsTable();
+  toast(`Added a Bio Parameters row for ${speciesName(species)} / ${soundSystemName(soundSystem)}.`);
 }
 
 // ---------- Monthly Station Assignments ----------

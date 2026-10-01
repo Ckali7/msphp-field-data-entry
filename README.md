@@ -128,10 +128,12 @@ device started from an existing one.
 - **Station System** (WAS/ALT/STA) defaults to whichever one was last
   used, for a new collection — not always WAS.
 - **Measured Fish** — species/length/weight tally, with the same live
-  cross-checks against `LBioParms` the original had (implausible length for
-  the species/sound system, SL-vs-FL mismatch, weight inconsistent with
-  length), falling back to the generic "Georgia" bioparm row exactly like the
-  original does when there's no system-specific one. Entered fish show as
+  cross-checks against `LBioParms` the original had (SL-vs-FL mismatch,
+  weight inconsistent with length — unrelated, unchanged), falling back to
+  the generic "Georgia" bioparm row exactly like the original does when
+  there's no system-specific one. The implausible-length check itself (FL,
+  and now TL too) was rebuilt into a full Bio Parameters system 2026-10-01 —
+  see "Bio Parameters — FL/TL reasonable-range checks" below. Entered fish show as
   one summary row per species (species, measured count, editable Total
   Count) rather than a full table per species — per Chris (2026-09), a wall
   of per-species tables got overwhelming as a collection fills up. An "Open"
@@ -239,6 +241,51 @@ device started from an existing one.
   - `TagType1`/`TagNumber1`/`TagType2`/`TagNumber2`/`TagType3`/`TagNumber3`
     are new fields on measuredFish records, in that order, inserted right
     after TagStatus/DispositionCode in the Access-shaped export.
+- **Bio Parameters — FL/TL reasonable-range checks (2026-10-01, per Chris).**
+  Rebuilt from scratch, replacing the old passive post-save FL warning
+  entirely (not layered on top of it). The old `LBioParms` table only ever
+  had FL ranges (no TL columns at all, and only 25 of ~150 species even had
+  an FL row) — this extends the same idea to TL, and makes gaps fill
+  themselves in from real survey data instead of staying empty forever.
+  - **The check itself**: when Add Fish is clicked (or Enter triggers it),
+    FL — and TL too, for species that show it — is checked against that
+    species+sound-system's known range (falling back to the generic
+    "Georgia" row the same way the length/weight regressions already did).
+    A value outside an *established* range blocks the save with a real
+    confirm: "FL/TL _ is outside the current range for _: min - max. Is
+    this measurement correct?" — **Yes** saves the fish and widens the
+    range to include it (permanently — this isn't just a one-time bootstrap
+    window, a genuinely larger/smaller confirmed fish keeps the range
+    honest forever); **No** does *not* save, and bounces focus back to the
+    specific field that triggered it with its value still there to fix,
+    since it's most likely a keystroke error, not a real measurement.
+  - **The warmup problem, solved**: a species+length combo with no
+    established range yet (which is *every* TL range to start, plus FL for
+    the ~125 species the old table never had data for) would otherwise nag
+    on almost every entry for weeks before a legitimate range existed. So a
+    range doesn't start enforcing (i.e. stop silently accepting everything)
+    until it has **5 real measurements** behind it — before that, every
+    value just widens the range with no popup at all. The 68 original FL
+    ranges are exempt from this entirely (seeded with a count of 9999 on
+    migration) since they're already real, decades-old survey data.
+  - **Settings > Table Data > Bio Parameters** — fully editable: Species,
+    Sound System, FL Min/Max/Count, TL Min/Max/Count, add/edit/delete rows
+    by hand. Typing a large number directly into Count marks a manually-
+    entered range as already-trusted (skips the 5-entry warmup); leaving it
+    low/at 0 lets it warm up from real entries like everything else does.
+    The existing FL-to-SL and FL/SL-to-Weight regression coefficients
+    aren't shown in this table — unrelated to this feature, untouched by
+    anything edited here.
+  - Implementation: `checkLengthRange()` / `recordLengthObservation()` in
+    `js/validation.js`, called from `addMeasuredFish()` in `js/app.js`.
+    `LOOKUPS.bioParms` rows gained `flCount`/`tlMin`/`tlMax`/`tlCount`
+    alongside the existing `flMin`/`flMax`; a brand-new species+system
+    combo (first real measurement ever, or added by hand in Settings) gets
+    a row created on the fly. A regen of `js/lookups.js` from the `.mdb`
+    (`tools/regenerate_lookups.py`) only affects a brand-new device's
+    starting baseline — it does NOT erase ranges a real device has already
+    learned, since those live in that device's own IndexedDB
+    (`lookupOverrides`), which always wins over the shipped file on load.
 - **Species-specific fields** — FL is always shown; TL and Sex show up per
   species via a three-tier rule worked out with Chris over a few rounds
   (2026-09/10; full reasoning and exact logic in
@@ -392,9 +439,14 @@ device started from an existing one.
     popup. A brand-new table, unlike everything else here — starts empty,
     populate it with real tag-type names before that popup's Tag Type
     dropdowns are useful. Same add/rename/remove pattern as Crew/Gear/Activity.
-  All edits here (crew, stations, tag types, and each month's assignment
-  import) are stored on-device and travel to other devices the same way
-  field data does — via **Backup (JSON)** / **Restore Backup**.
+  - **Bio Parameters** (added 2026-10-01) — the FL/TL reasonable-range table
+    behind the Measured Fish length confirm (see "Bio Parameters — FL/TL
+    reasonable-range checks" above for the full behavior). Species, Sound
+    System, FL/TL Min/Max/Count per row, add/edit/delete by hand.
+  All edits here (crew, stations, tag types, bio parameters, and each
+  month's assignment import) are stored on-device and travel to other
+  devices the same way field data does — via **Backup (JSON)** /
+  **Restore Backup**.
 
   **Bug found and fixed alongside this (2026-09-30):** every edit here used
   to rebuild *every* dropdown app-wide (`populateStaticDropdowns()`), not

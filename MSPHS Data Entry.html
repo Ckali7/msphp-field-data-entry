@@ -364,6 +364,7 @@
       <button class="tabBtn" data-settings-tab="stations">Stations</button>
       <button class="tabBtn" data-settings-tab="assignments">Monthly Station Assignments</button>
       <button class="tabBtn" data-settings-tab="tagTypes">Tag Types</button>
+      <button class="tabBtn" data-settings-tab="bioParms">Bio Parameters</button>
     </nav>
 
     <!-- ---- Crew ---- -->
@@ -468,6 +469,34 @@
       <table class="dataTable">
         <thead><tr><th>Code</th><th>Name</th><th></th></tr></thead>
         <tbody id="tagTypeTbody"></tbody>
+      </table>
+    </div>
+
+    <!-- ---- Bio Parameters ---- -->
+    <div class="tabPanel" id="settingsPanelBioParms" hidden>
+      <p class="settingsNote">FL/TL reasonable-range checks for Measured Fish, per species and sound system
+        (falling back to the generic "Georgia" row when no system-specific one exists yet, same as the
+        length-vs-weight checks already did). A new species+system combo, or a TL range for any species
+        (none existed before this), starts blank and builds up silently from real entries until it has
+        5 — only then does it start prompting on an out-of-range measurement. "Count" controls that: set
+        it to a large number by hand to mark a manually-entered range as already trusted.</p>
+      <div class="entryRow">
+        <div class="field"><label>Species</label><select id="bpSpecies"></select></div>
+        <div class="field"><label>Sound System</label><select id="bpSoundSystem"></select></div>
+        <div class="field small"><label>FL Min</label><input id="bpFLMin" type="number" /></div>
+        <div class="field small"><label>FL Max</label><input id="bpFLMax" type="number" /></div>
+        <div class="field small"><label>FL Count</label><input id="bpFLCount" type="number" /></div>
+        <div class="field small"><label>TL Min</label><input id="bpTLMin" type="number" /></div>
+        <div class="field small"><label>TL Max</label><input id="bpTLMax" type="number" /></div>
+        <div class="field small"><label>TL Count</label><input id="bpTLCount" type="number" /></div>
+        <button id="btnAddBioParms" class="bigBtn primary">Add Row</button>
+      </div>
+      <table class="dataTable">
+        <thead><tr>
+          <th>Species</th><th>Sound System</th><th>FL Min</th><th>FL Max</th><th>FL Count</th>
+          <th>TL Min</th><th>TL Max</th><th>TL Count</th><th></th>
+        </tr></thead>
+        <tbody id="bioParmsTbody"></tbody>
       </table>
     </div>
 

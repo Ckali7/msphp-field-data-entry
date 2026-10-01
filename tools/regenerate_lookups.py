@@ -111,10 +111,21 @@ def main():
         for r in rows(cursor, "LSpecies")
     ]
 
+    # flCount=9999 / tlMin,tlMax=None / tlCount=0 (2026-10-01, per Chris): the
+    # FL/TL reasonable-range check (checkLengthRange()/recordLengthObservation()
+    # in validation.js) needs these on every row. flCount=9999 marks these as
+    # already-established real survey data (skips the 5-real-entry warmup new
+    # species/TL combos go through); LBioParms itself has no TL columns at all,
+    # so tlMin/tlMax always start null here regardless of what's in the .mdb.
+    # NOTE: this only affects the baseline a brand-new device starts from —
+    # each device's own IndexedDB (lookupOverrides) holds whatever it's
+    # learned since, and that always wins over this file on load, so a regen
+    # does NOT erase live-learned TL ranges already sitting on a real device.
     out["bioParms"] = [
         {
             "species": r["SpeciesCode"], "soundSystem": r["SoundSystem"],
-            "flMin": r["FLMin"], "flMax": r["FLMax"],
+            "flMin": r["FLMin"], "flMax": r["FLMax"], "flCount": 9999,
+            "tlMin": None, "tlMax": None, "tlCount": 0,
             "flSLm": r["FLSLm"], "flSLb": r["FLSLb"],
             "flTWa": r["FLTWa"], "flTWb": r["FLTWb"],
             "slTWa": r["SLTWa"], "slTWb": r["SLTWb"],
