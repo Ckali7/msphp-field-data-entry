@@ -12,6 +12,32 @@
 // are unrelated/unchanged — different kind of check (a regression-predicted
 // mismatch, not an absolute reasonable-range), out of scope for that change.
 
+// Collection-tab Hydro/Station fields with no app-side sanity check at all
+// until now (found via deliberate adversarial testing, per Chris
+// 2026-10-02 -- e.g. Depth=-500ft or Latitude=999 were saved silently).
+// Fixed, physical-world bounds -- not self-learning like Bio Parameters
+// above, since these are geographic/physical limits, not species biology.
+// Latitude/Longitude bounds are the real master station list's own
+// min/max (30.71-32.07N, -81.55--80.85W) with a generous buffer, not a
+// tight box, so a legitimately hand-corrected nearby position still passes.
+const COLLECTION_FIELD_RANGES = {
+  f_Depth: { min: 0, max: 60, label: 'Depth (ft)' },
+  f_Salinity: { min: 0, max: 40, label: 'Salinity (ppt)' },
+  f_WaterTemp: { min: 0, max: 35, label: 'Water Temp (°C)' },
+  f_DO: { min: 0, max: 20, label: 'D.O. (mg/L)' },
+  f_Latitude: { min: 29.5, max: 33.0, label: 'Latitude' },
+  f_Longitude: { min: -82.5, max: -80.0, label: 'Longitude' },
+};
+
+// Returns {status:'ok'} or {status:'violation', cfg}. Blank values are
+// always 'ok' -- required-ness is handled elsewhere.
+function checkCollectionFieldRange(fieldId, value) {
+  const cfg = COLLECTION_FIELD_RANGES[fieldId];
+  if (!cfg || value == null) return { status: 'ok' };
+  if (value < cfg.min || value > cfg.max) return { status: 'violation', cfg };
+  return { status: 'ok' };
+}
+
 function findBioParms(speciesCode, soundSystem) {
   let row = LOOKUPS.bioParms.find(
     (r) => r.species === speciesCode && r.soundSystem === soundSystem

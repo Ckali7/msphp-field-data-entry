@@ -1254,6 +1254,13 @@ function renderAddCountsModal() {
       const inp = tr.querySelector('.addCountInput');
       const addVal = numOrNull(inp.value);
       if (addVal == null) return;
+      // Hard rule, no override (per Chris, 2026-10-02) -- a running count
+      // can never legitimately go negative, unlike the confirm-based
+      // checks elsewhere in this app for values that are merely unusual.
+      if (addCountsState[i].current + addVal < 0) {
+        alert(`That would take this species' count below zero (${addCountsState[i].current} + ${addVal}). Counts can't go negative.`);
+        return;
+      }
       addCountsState[i].current += addVal;
       inp.value = '';
       tr.querySelector('.addCountsCurrent').textContent = addCountsState[i].current;
@@ -1520,6 +1527,21 @@ async function addSacrificedFish() {
   if (speciesCode == null) { toast('Species is required', true); return; }
   const sampleNumber = numOrNull($('sf_SampleNumber').value);
   if (sampleNumber == null) { toast('Sample # required', true); return; }
+
+  // Sample # is this record's key (CollectionNumber+SampleNumber) -- a
+  // repeat silently overwrites the earlier fish entirely with no trace of
+  // what it was (found via deliberate testing, per Chris 2026-10-02).
+  // Warn and require confirmation before letting that happen; Cancel backs
+  // out so the number can be corrected instead.
+  const existingSample = await DB.get('sacrificedFish', [currentCollectionNumber, sampleNumber]);
+  if (existingSample) {
+    const exSp = LOOKUPS.species.find((s) => s.code === existingSample.SpeciesCode);
+    const exName = exSp ? exSp.common : `species ${existingSample.SpeciesCode}`;
+    if (!confirm(`Sample #${sampleNumber} already has a fish recorded (${exName}, TL ${existingSample.TL ?? '--'}, FL ${existingSample.FL ?? '--'}).\n\nOverwrite it with this new entry?`)) {
+      $('sf_SampleNumber').focus();
+      return;
+    }
+  }
 
   const TL = numOrNull($('sf_TL').value);
   const FL = numOrNull($('sf_FL').value);
@@ -1914,6 +1936,33 @@ function guardedCollectionChange(id, fn) {
   fn();
 }
 
+// Reasonable-range sanity check (per Chris, 2026-10-02 -- found via
+// deliberate testing that Depth/Salinity/WaterTemp/DO/Lat/Long had no
+// plausibility check at all) wraps guardedCollectionChange() rather than
+// living inside it, and runs FIRST: a decline here bails out before
+// guardedCollectionChange ever touches collectionFieldBaseline, so
+// retyping a corrected value afterward is judged against the OLD baseline
+// exactly as if the declined attempt never happened -- it does not itself
+// get treated as a second "already set" change needing its own confirm.
+// A no-op for every field without a configured range (see
+// COLLECTION_FIELD_RANGES in validation.js).
+function changeWithRangeCheck(id, fn) {
+  const check = checkCollectionFieldRange(id, numOrNull($(id).value));
+  if (check.status === 'violation') {
+    const { label, min, max } = check.cfg;
+    if (!confirm(`${label} of ${$(id).value} is outside the reasonable range (${min} to ${max}).\n\nIs this value correct?`)) {
+      // Revert to the last known-good (committed) value rather than
+      // leaving the implausible one sitting unsaved on screen -- this
+      // field auto-saves on every change, unlike a staged Add-Fish row, so
+      // a visibly-wrong value with nothing obviously "pending" would be
+      // confusing. Blank if this was the field's first-ever entry.
+      $(id).value = collectionFieldBaseline[id] ?? '';
+      return;
+    }
+  }
+  guardedCollectionChange(id, fn);
+}
+
 function wireEvents() {
   for (const id of CODE_ENTRY_SELECT_IDS) { enableCodeEntry($(id)); wireTouchCodeEntry($(id)); }
 
@@ -2019,7 +2068,7 @@ function wireEvents() {
   const COLLECTION_FIELDS_WITH_CASCADE = new Set(['f_Station', 'f_Date', 'f_VesselOp']);
   for (const id of COLLECTION_FIELD_IDS) {
     if (COLLECTION_FIELDS_WITH_CASCADE.has(id)) continue;
-    $(id).addEventListener('change', () => guardedCollectionChange(id, () => saveCollectionForm()));
+    $(id).addEventListener('change', () => changeWithRangeCheck(id, () => saveCollectionForm()));
   }
   $('f_SubSampleTool').addEventListener('change', () => saveCollectionForm());
   $('f_Station').addEventListener('change', () => guardedCollectionChange('f_Station', () => {
@@ -2161,8 +2210,27 @@ function wireEvents() {
     const file = ev.target.files[0];
     if (!file) return;
     const text = await file.text();
-    const counts = await importFullBackup(text);
-    toast(`Restored: ${counts.collections} collections, ${counts.measuredFish} measured, ${counts.sacrificedFish} sacrificed, ${counts.taggedFish} tagged.`);
+    // A corrupted/truncated/non-JSON file used to throw here with zero
+    // user-facing feedback -- found via deliberate testing, per Chris
+    // 2026-10-02. importFullBackup() parses BEFORE writing anything, so a
+    // parse failure never touches existing data; safe to just report it.
+    let counts;
+    try {
+      counts = await importFullBackup(text);
+    } catch (err) {
+      alert(`That file couldn't be restored -- it doesn't look like a valid MSPHP backup `
+        + `(${err.message}).\n\nYour current data was NOT changed. Check that you picked the right `
+        + `.json file (not the Export .xlsx, which is a different format), or try a different backup file.`);
+      ev.target.value = '';
+      return;
+    }
+    const totalRestored = counts.collections + counts.measuredFish + counts.sacrificedFish + counts.taggedFish;
+    if (totalRestored === 0) {
+      alert('That file was read, but it contained no recognizable MSPHP data (0 collections or fish '
+        + 'restored) -- it may be the wrong file. Your current data was NOT changed. Try a different backup file.');
+    } else {
+      toast(`Restored: ${counts.collections} collections, ${counts.measuredFish} measured, ${counts.sacrificedFish} sacrificed, ${counts.taggedFish} tagged.`);
+    }
     renderCollectionsList();
     renderBackupBanner();
     ev.target.value = '';

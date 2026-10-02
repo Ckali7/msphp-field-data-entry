@@ -353,6 +353,50 @@ device started from an existing one.
     horizontal scroll on phone widths. Fixed, proportioned column widths
     (`.addCountsTable` in `css/style.css`) plus a shorter "Final" header
     keep all 5 columns visible without scrolling even at ~360px.
+- **Adversarial/crash testing + 4 fixes (2026-10-02, per Chris).** A deep
+  fuzz pass (every field, boundary/negative/huge/injection-style values,
+  rapid double-clicks, deliberately-corrupted backup files) found zero
+  crashes but surfaced four real, pre-existing gaps — fixed:
+  - **Sacrificed Fish Sample # reuse.** Sample # is the record's key
+    (`CollectionNumber`+`SampleNumber`), so re-entering an already-used one
+    used to silently overwrite the earlier fish's entire record with no
+    trace it ever existed. Add Sample now checks for an existing record at
+    that Sample # first and confirms ("Sample #_ already has a fish
+    recorded (species, TL, FL). Overwrite it?") before proceeding — Cancel
+    backs out (focus returns to Sample #) so the number can be corrected
+    instead.
+  - **Collection-tab reasonable-range checks.** Depth, Salinity, Water
+    Temp, D.O., Latitude, and Longitude had no plausibility check at all
+    (e.g. Depth=-500ft or Latitude=999 saved silently). Fixed, physical-
+    world bounds per field (not self-learning like Bio Parameters) now
+    confirm before accepting an out-of-range value — Cancel reverts the
+    field to its last known-good value (blank if this was its first-ever
+    entry) rather than leaving the implausible number sitting unsaved on
+    screen. Runs as its own check *before* the item-4 change-confirmation
+    gate, so a declined range violation never itself counts as a "change"
+    — retyping a correction afterward is judged purely against whatever
+    the field held before the bad attempt. `COLLECTION_FIELD_RANGES` /
+    `checkCollectionFieldRange()` in `js/validation.js`,
+    `changeWithRangeCheck()` in `js/app.js`. Lat/Long bounds (29.5–33.0°N,
+    -82.5 to -80.0°W) are the real master station list's own min/max with
+    a generous buffer, not a tight box.
+  - **Add Counts negative floor.** Typing a large negative Add value could
+    drive a species' running count below zero. This is a hard rule with no
+    override (per Chris — unlike the two checks above, a negative fish
+    count can never legitimately be correct): the `=` button now blocks
+    (`alert()`, no change applied) any addition that would take Current
+    below 0.
+  - **Corrupted/invalid backup restore.** Restoring a truncated or
+    non-JSON file used to throw an uncaught exception with zero user-
+    facing feedback (though it never touched existing data either way —
+    `importFullBackup()` parses before writing anything). Restore Backup
+    now catches that and shows a clear alert explaining the file couldn't
+    be read, confirms current data was NOT changed, and suggests picking a
+    different file or checking it's the right format (not the Export
+    .xlsx). A separate case — a validly-formatted JSON file that just isn't
+    a real backup (0 collections/fish found in it) — gets its own distinct
+    "wrong file?" message instead of a misleadingly-normal "Restored: 0..."
+    toast.
 - **Species-specific fields** — FL is always shown; TL and Sex show up per
   species via a three-tier rule worked out with Chris over a few rounds
   (2026-09/10; full reasoning and exact logic in
